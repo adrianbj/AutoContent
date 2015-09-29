@@ -1,0 +1,207 @@
+<?php
+
+/**
+ * ProcessWire module for automatic generation of content when a field is blank
+ * by Adrian Jones
+ *
+ *
+ * ProcessWire 2.x
+ * Copyright (C) 2011 by Ryan Cramer
+ * Licensed under GNU/GPL v2, see LICENSE.TXT
+ *
+ * http://www.processwire.com
+ * http://www.ryancramer.com
+ *
+ */
+
+class AutoContent extends WireData implements Module {
+
+    public static function getModuleInfo() {
+        return array(
+            'title' => 'Auto Content',
+            'summary' => 'Automatic generation of content when a field is blank',
+            'href' => '',
+            'version' => 1,
+            'autoload' => true,
+            'icon'     => 'lightbulb-o'
+        );
+    }
+
+
+    /**
+     * Populate the default config data
+     *
+     */
+    public function __construct() {
+        //
+    }
+
+
+    public function init() {
+        $this->addHookAfter('InputfieldTextarea::getConfigInputfields', $this, 'hookAddConfig');
+        $this->addHookAfter('Fieldtype::formatValue', $this, 'autoContent');
+    }
+
+
+    public function autoContent($event) {
+
+        $page = $event->arguments(0);
+        if($page->template == 'admin') return;
+        $field = $event->arguments(1);
+
+        if($event->return != '') return;
+
+        if($field->type == "FieldtypeText") {
+            $event->return = "This is an example {$field->label}";
+        }
+        elseif($field->type == "FieldtypeDatetime") {
+            $event->return = $field->dateOutputFormat ? date($field->dateOutputFormat,time()) : time();
+        }
+        elseif($field->type == "FieldtypeInteger") {
+            $event->return = mt_rand($field->min ? $field->min : 0, $field->max ? $field->max : getrandmax());
+        }
+        elseif($field->type == "FieldtypeFloat") {
+            $scale = pow(10, $field->precision);
+            $event->return = mt_rand(($field->min ? $field->min : 0) * $scale, ($field->max ? $field->max : getrandmax()) * $scale) / $scale;
+        }
+        elseif($field->type == "FieldtypeEmail") {
+            $event->return = "info@".wire('config')->httpHost;
+        }
+        elseif($field->type == "FieldtypeURL") {
+            $event->return = wire('config')->httpHost;
+        }
+        elseif($field->type == "FieldtypeTextarea") {
+            //Plain text
+            if($field->inputfieldClass == 'InputfieldTextarea') {
+                $event->return = file_get_contents("http://loripsum.net/api/{$field->auto_content_number_paragraphs}/{$field->auto_content_length_paragraphs}/plaintext");
+            }
+            //RTEs
+            else {
+                $event->return = file_get_contents("http://loripsum.net/api/{$field->auto_content_number_paragraphs}/{$field->auto_content_length_paragraphs}".
+                                    ($field->auto_content_add_headers ? '/headers' : '').
+                                    ($field->auto_content_decorate_paragraphs ? '/decorate' : '').
+                                    ($field->auto_content_add_unordered_lists ? '/ul' : '').
+                                    ($field->auto_content_add_ordered_lists ? '/ol' : '').
+                                    ($field->auto_content_add_description_lists ? '/dl' : '').
+                                    ($field->auto_content_add_blockquotes ? '/bq' : '').
+                                    ($field->auto_content_add_code ? '/code' : '').
+                                    ($field->auto_content_add_links ? '/link' : '')
+                                );
+            }
+        }
+        elseif($field->type instanceof FieldtypeImage) {
+            $width = $field->minWidth ? $field->minWidth : ($field->maxWidth ? $field->maxWidth : 1000);
+            $height = $field->minHeight ? $field->minHeight : ($field->maxHeight ? $field->maxHeight : 500);
+            $event->return = "http://placehold.it/{$width}x{$height}";
+        }
+        else {
+            $event->return = "This is an example {$field->label}";
+        }
+    }
+
+    public function hookAddConfig(HookEvent $event) {
+
+        // get existing inputfields from getConfigInputfields
+        $inputfields = $event->return;
+
+        $fieldset = $this->modules->get("InputfieldFieldset");
+        $fieldset->attr('id', 'autocontent_options');
+        $fieldset->label = "AutoContent Options";
+        $fieldset->description = "These options control the automatically generated lorem ipsum text if the field is empty.";
+        $fieldset->collapsed = Inputfield::collapsedYes;
+        $inputfields->add($fieldset);
+
+        $f = $this->modules->get('InputfieldInteger');
+        $f->label = __('Number of paragraphs');
+        $f->description = __('The number of paragraphs generated.');
+        $f->attr('name', 'auto_content_number_paragraphs');
+        $f->columnWidth = 50;
+        $auto_content_length_paragraphs = $this->fields->get($event->object->name)->auto_content_number_paragraphs;
+        $f->value = $auto_content_length_paragraphs ? $auto_content_length_paragraphs : 3;
+        $fieldset->append($f);
+
+        $f = $this->modules->get('InputfieldSelect');
+        $f->label = __('Length of paragraphs');
+        $f->description = __('The length of the paragraphs.');
+        $f->attr('name', 'auto_content_length_paragraphs');
+        $f->columnWidth = 50;
+        $f->addOption('short', 'Short');
+        $f->addOption('medium', 'Medium');
+        $f->addOption('long', 'Long');
+        $f->addOption('verylong', 'Very Long');
+        $auto_content_length_paragraphs = $this->fields->get($event->object->name)->auto_content_length_paragraphs;
+        $f->value = $auto_content_length_paragraphs ? $auto_content_length_paragraphs : 'medium';
+        $fieldset->append($f);
+
+        //html options if RTE textarea fields - CKEditor, TinyMCE etc
+        if($this->fields->get($event->object->name)->inputfieldClass != 'InputfieldTextarea') {
+
+            $f = $this->modules->get('InputfieldCheckbox');
+            $f->label = __('Add Headers');
+            $f->description = __('Inlude random headers (<h1>, <h2>, etc) headers throughout the text.');
+            $f->columnWidth = 33;
+            $f->attr('name', 'auto_content_add_headers');
+            $f->attr('checked', $this->fields->get($event->object->name)->auto_content_add_headers == '1' ? 'checked' : '');
+            $fieldset->append($f);
+
+            $f = $this->modules->get('InputfieldCheckbox');
+            $f->label = __('Decorate paragraphs');
+            $f->description = __('Add bold, italic and marked text.');
+            $f->columnWidth = 34;
+            $f->attr('name', 'auto_content_decorate_paragraphs');
+            $f->attr('checked', $this->fields->get($event->object->name)->auto_content_decorate_paragraphs == '1' ? 'checked' : '');
+            $fieldset->append($f);
+
+            $f = $this->modules->get('InputfieldCheckbox');
+            $f->label = __('Add Links');
+            $f->description = __('Include links (<a>) throughout the text.');
+            $f->columnWidth = 33;
+            $f->attr('name', 'auto_content_add_links');
+            $f->attr('checked', $this->fields->get($event->object->name)->auto_content_add_links == '1' ? 'checked' : '');
+            $fieldset->append($f);
+
+            $f = $this->modules->get('InputfieldCheckbox');
+            $f->label = __('Add Unordered Lists');
+            $f->description = __('Include random unordered lists (<ul>) throughout the text.');
+            $f->columnWidth = 20;
+            $f->attr('name', 'auto_content_add_unordered_lists');
+            $f->attr('checked', $this->fields->get($event->object->name)->auto_content_add_unordered_lists == '1' ? 'checked' : '');
+            $fieldset->append($f);
+
+            $f = $this->modules->get('InputfieldCheckbox');
+            $f->label = __('Add Ordered Lists');
+            $f->description = __('Include random ordered lists (<ol>) throughout the text.');
+            $f->columnWidth = 20;
+            $f->attr('name', 'auto_content_add_ordered_lists');
+            $f->attr('checked', $this->fields->get($event->object->name)->auto_content_add_ordered_lists == '1' ? 'checked' : '');
+            $fieldset->append($f);
+
+            $f = $this->modules->get('InputfieldCheckbox');
+            $f->label = __('Add Description Lists');
+            $f->description = __('Include random description lists (<dl>) throughout the text.');
+            $f->columnWidth = 20;
+            $f->attr('name', 'auto_content_add_description_lists');
+            $f->attr('checked', $this->fields->get($event->object->name)->auto_content_add_description_lists == '1' ? 'checked' : '');
+            $fieldset->append($f);
+
+            $f = $this->modules->get('InputfieldCheckbox');
+            $f->label = __('Add Blockquotes');
+            $f->description = __('Include blockquotes (<blockquote>) throughout the text.');
+            $f->columnWidth = 20;
+            $f->attr('name', 'auto_content_add_blockquotes');
+            $f->attr('checked', $this->fields->get($event->object->name)->auto_content_add_blockquotes == '1' ? 'checked' : '');
+            $fieldset->append($f);
+
+            $f = $this->modules->get('InputfieldCheckbox');
+            $f->label = __('Add Code Blocks');
+            $f->description = __('Include code blocks (<pre>) throughout the text.');
+            $f->columnWidth = 20;
+            $f->attr('name', 'auto_content_add_code');
+            $f->attr('checked', $this->fields->get($event->object->name)->auto_content_add_code == '1' ? 'checked' : '');
+            $fieldset->append($f);
+
+        }
+
+    }
+
+}
