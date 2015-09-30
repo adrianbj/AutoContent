@@ -21,7 +21,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'title' => 'Auto Content',
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
-            'version' => 5,
+            'version' => 6,
             'autoload' => true,
             'icon'     => 'lightbulb-o'
         );
@@ -69,9 +69,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
 
             //delete existing generated pages
             if($this->input->post->delete_generated_pages) {
-                foreach($this->data['generatedPages'] as $pid) {
-                    wire('pages')->delete(wire('pages')->get($pid), true);
-                }
+                $this->deletePages($this->data['generatedPages']);
                 unset($this->data['generatedPages']);
             }
 
@@ -188,6 +186,15 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
 
     protected function toLowerCamelCase ($text) {
         return lcfirst(str_replace(' ', '', ucwords(str_replace('_', ' ', $text))));
+    }
+
+    protected function deletePages ($pidArray) {
+        foreach($pidArray as $pid) {
+            $p = wire('pages')->get($pid);
+            if($p->hasStatus(Page::statusLocked)) {
+                wire('pages')->delete($p, true);
+            }
+        }
     }
 
     public function textareaConfig(HookEvent $event) {
@@ -420,9 +427,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
      *
      */
     public function ___uninstall() {
-        foreach($this->data['generatedPages'] as $pid) {
-            wire('pages')->delete(wire('pages')->get($pid), true);
-        }
+        $this->deletePages($this->data['generatedPages']);
     }
 
 }
