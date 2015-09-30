@@ -21,7 +21,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'title' => 'Auto Content',
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
-            'version' => 4,
+            'version' => 5,
             'autoload' => true,
             'icon'     => 'lightbulb-o'
         );
@@ -88,6 +88,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                     $np->parent = $this->input->post->parent_page;
                     $np->template = $this->input->post->page_template;
                     $np->title = str_replace('.','',$faker->sentence(mt_rand(1,3)));
+                    $np->addStatus(Page::statusLocked);
                     $np->save();
                     $this->data['generatedPages'][] = $np->id;
                 }
