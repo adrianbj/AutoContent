@@ -1,7 +1,7 @@
 AutoContent
 ================
 
-ProcessWire module for automatic generation of content when a field is blank
+ProcessWire module for automatic generation of content when a field is blank and also for generating test pages that can be "one-click" deleted.
 
 Currently works for most default PW fieldtypes. Profields and selected third party fieldtypes coming shortly.
 
