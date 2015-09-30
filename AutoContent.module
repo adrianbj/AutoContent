@@ -14,14 +14,14 @@
  *
  */
 
-class AutoContent extends WireData implements Module {
+class AutoContent extends WireData implements Module, ConfigurableModule {
 
     public static function getModuleInfo() {
         return array(
             'title' => 'Auto Content',
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
-            'version' => 2,
+            'version' => 3,
             'autoload' => true,
             'icon'     => 'lightbulb-o'
         );
@@ -29,16 +29,36 @@ class AutoContent extends WireData implements Module {
 
 
     /**
+     * Data as used by the get/set functions
+     *
+     */
+    protected $data = array();
+
+
+   /**
+     * Default configuration for module
+     *
+     */
+    static public function getDefaultData() {
+            return array(
+                "locale" => ""
+            );
+    }
+
+    /**
      * Populate the default config data
      *
      */
     public function __construct() {
-        //
+       foreach(self::getDefaultData() as $key => $value) {
+               $this->$key = $value;
+       }
     }
 
 
     public function init() {
-        $this->addHookAfter('InputfieldTextarea::getConfigInputfields', $this, 'hookAddConfig');
+        $this->addHookAfter('InputfieldText::getConfigInputfields', $this, 'textConfig');
+        $this->addHookAfter('InputfieldTextarea::getConfigInputfields', $this, 'textareaConfig');
         $this->addHookAfter('Fieldtype::formatValue', $this, 'autoContent');
     }
 
@@ -49,10 +69,35 @@ class AutoContent extends WireData implements Module {
         if($page->template == 'admin') return;
         $field = $event->arguments(1);
 
-        if($event->return != '') return;
+        if(!is_object($event->return) && $event->return != '') return;
+
+        //if MapMarker set to default then exit
+        if(isset($event->return->lat) && $event->return->lat != '0.000000') return;
+
+        // require the Faker autoloader
+        require_once $this->config->paths->siteModules.'/AutoContent/vendor/autoload.php';
+
+        // use the factory to create a Faker\Generator instance
+        $faker = Faker\Factory::create($this->data['locale']);
+
 
         if($field->type == "FieldtypeText") {
-            $event->return = "This is an example {$field->label}";
+            //see if faker property has been set on the Input tab of the field settings
+            if($field->faker_property) {
+                $event->return = $faker->{$field->faker_property};
+            }
+            else {
+                //see if faker has a property matched to the name of the text field
+                try {
+                    //convert field name which is likely in snakecase to lowerCamelCase which faker properties use
+                    //eg. last_name is converted to lastName
+                    $faker_propery = $this->toLowerCamelCase($field->name);
+                    $event->return = $faker->$faker_propery;
+                }
+                catch (Exception $e) {
+                    $event->return = "This is an example {$field->label}";
+                }
+            }
         }
         elseif($field->type == "FieldtypeDatetime") {
             $event->return = $field->dateOutputFormat ? date($field->dateOutputFormat,time()) : time();
@@ -94,12 +139,23 @@ class AutoContent extends WireData implements Module {
             $height = $field->minHeight ? $field->minHeight : ($field->maxHeight ? $field->maxHeight : 500);
             $event->return = "http://placehold.it/{$width}x{$height}";
         }
+        elseif($field->type == "FieldtypeMapMarker") {
+            $map = new stdClass();
+            $map->address = $faker->address;
+            $map->lat = $faker->latitude;
+            $map->lng = $faker->longitude;
+            $event->return = $map;
+        }
         else {
             $event->return = "This is an example {$field->label}";
         }
     }
 
-    public function hookAddConfig(HookEvent $event) {
+    protected function toLowerCamelCase ($text) {
+        return lcfirst(str_replace(' ', '', ucwords(str_replace('_', ' ', $text))));
+    }
+
+    public function textareaConfig(HookEvent $event) {
 
         // get existing inputfields from getConfigInputfields
         $inputfields = $event->return;
@@ -203,5 +259,77 @@ class AutoContent extends WireData implements Module {
         }
 
     }
+
+    public function textConfig(HookEvent $event) {
+
+        // require the Faker autoloader
+        require_once $this->config->paths->siteModules.'/AutoContent/vendor/autoload.php';
+
+        // use the factory to create a Faker\Generator instance
+        $faker = Faker\Factory::create();
+
+        // get existing inputfields from getConfigInputfields
+        $inputfields = $event->return;
+
+        $fieldset = $this->modules->get("InputfieldFieldset");
+        $fieldset->attr('id', 'autocontent_options');
+        $fieldset->label = "AutoContent Options";
+        $fieldset->description = "These options control the automatically generated content if the field is empty.";
+        $fieldset->collapsed = Inputfield::collapsedYes;
+        $inputfields->add($fieldset);
+
+        $f = $this->modules->get('InputfieldText');
+        $f->label = __('Faker property');
+        $f->description = __('The Faker property you want to use to auto populate content. You can use anything from the list of formatters at: [https://github.com/fzaninotto/Faker#formatters](https://github.com/fzaninotto/Faker#formatters)');
+        $autoFakerProperty = $this->toLowerCamelCase($event->object->name);
+
+        try {
+            $faker_propery = $this->toLowerCamelCase($event->object->name);
+            $faker->$faker_propery;
+            $f->notes = __("This field has been automatically matched to the \"$faker_propery\" Faker property so you can leave it empty.");
+        }
+        catch (Exception $e) {
+            $f->notes = __("There is no Faker property that matches the name of this field, so you will need to enter one manually.");
+        }
+
+        $f->attr('name', 'faker_property');
+        $f->value = $this->fields->get($event->object->name)->faker_property;
+        $fieldset->append($f);
+
+    }
+
+
+    /**
+     * Return an InputfieldsWrapper of Inputfields used to configure the class
+     *
+     * @param array $data Array of config values indexed by field name
+     * @return InputfieldsWrapper
+     *
+     */
+    public static function getModuleConfigInputfields(array $data) {
+
+        $data = array_merge(self::getDefaultData(), $data);
+
+        $wrapper = new InputFieldWrapper();
+
+        $f = wire('modules')->get('InputfieldSelect');
+        $f->attr('name+id', 'locale');
+        $f->label = __('Locale');
+        $f->description = __("The selected roles will not be subject to any of the rules below.\nThe name will change automatically with the title, but they will be able to manually edit the page name as desired.");
+        // populate with all available options from Faker Provider directory
+        $path = wire('config')->paths->siteModules.'/AutoContent/vendor/fzaninotto/faker/src/Faker/Provider';
+        foreach (new DirectoryIterator($path) as $file) {
+            if ($file->isDot()) continue;
+
+            if ($file->isDir()) {
+                $f->addOption($file->getFilename());
+            }
+        }
+        if(isset($data['locale'])) $f->value = $data['locale'];
+        $wrapper->add($f);
+
+        return $wrapper;
+    }
+
 
 }
