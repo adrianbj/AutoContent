@@ -21,7 +21,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'title' => 'Auto Content',
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
-            'version' => 6,
+            'version' => 7,
             'autoload' => true,
             'icon'     => 'lightbulb-o'
         );
@@ -374,7 +374,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
         $fieldset = wire('modules')->get("InputfieldFieldset");
         $fieldset->attr('id', 'page_generator');
         $fieldset->label = "Page Generator";
-        $fieldset->description = __("Automatically create pages for testing that can be automatically removed. Pages will be added when you click the Submit button.");
+        $fieldset->description = __("Automatically create pages for testing that can be automatically removed. Pages will be added when you click the Submit button. Generated pages are given locked status to prevent editing. If you remove this status, the pages will not be deleted during batch deletion.");
         $fieldset->collapsed = Inputfield::collapsedYes;
         $wrapper->add($fieldset);
 
@@ -412,7 +412,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
 
         $f = wire('modules')->get('InputfieldCheckbox');
         $f->label = __('Delete Generated Pages');
-        $f->description = __('Delete all the automatically generated pages.');
+        $f->description = __('Delete all the automatically generated pages, that still have their locked status.');
         $f->attr('name', 'delete_generated_pages');
         $f->collapsed = Inputfield::collapsedYes;
         $wrapper->append($f);
