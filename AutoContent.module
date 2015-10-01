@@ -21,9 +21,9 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'title' => 'Auto Content',
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
-            'version' => 7,
+            'version' => 8,
             'autoload' => true,
-            'icon'     => 'lightbulb-o'
+            'icon' => 'lightbulb-o'
         );
     }
 
@@ -56,46 +56,11 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
 
 
     public function init() {
-        $this->addHookAfter('InputfieldText::getConfigInputfields', $this, 'textConfig');
-        $this->addHookAfter('InputfieldTextarea::getConfigInputfields', $this, 'textareaConfig');
+        $this->addHookAfter('Inputfield::getConfigInputfields', $this, 'fieldConfig');
         $this->addHookAfter('Fieldtype::formatValue', $this, 'autoContent');
         if($this->input->get->name == "AutoContent") $this->addHookAfter('Modules::saveModuleConfigData', $this, 'createOrDeletePages');
     }
 
-
-    public function createOrDeletePages(HookEvent $event) {
-
-        if($this->input->post->settingsSaved == 1) {
-
-            //delete existing generated pages
-            if($this->input->post->delete_generated_pages) {
-                $this->deletePages($this->data['generatedPages']);
-                unset($this->data['generatedPages']);
-            }
-
-            //add new generated pages
-            if($this->input->post->number_of_pages) {
-                // require the Faker autoloader
-                require_once $this->config->paths->siteModules.'/AutoContent/vendor/autoload.php';
-
-                // use the factory to create a Faker\Generator instance
-                $faker = $this->data['locale'] ? Faker\Factory::create($this->data['locale']) : Faker\Factory::create();
-
-                for($i=0;$i<$this->input->post->number_of_pages;$i++) {
-                    $np = new Page();
-                    $np->parent = $this->input->post->parent_page;
-                    $np->template = $this->input->post->page_template;
-                    $np->title = str_replace('.','',$faker->sentence(mt_rand(1,3)));
-                    $np->addStatus(Page::statusLocked);
-                    $np->save();
-                    $this->data['generatedPages'][] = $np->id;
-                }
-            }
-            $this->input->post->settingsSaved = null;
-            $this->modules->saveModuleConfigData($this->modules->get("AutoContent"), $this->data);
-        }
-
-    }
 
     public function autoContent($event) {
 
@@ -114,7 +79,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
         //if MapMarker set to default then exit
         if(isset($event->return->lat) && $event->return->lat != '0.000000') return;
 
-        if($field->type == "FieldtypeText") {
+        if($field->type instanceof FieldtypeText && $field->type != "FieldtypeTextarea") {
             //see if faker property has been set on the Input tab of the field settings
             if($field->faker_property) {
                 $event->return = $faker->{$field->faker_property};
@@ -124,12 +89,55 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                 try {
                     //convert field name which is likely in snakecase to lowerCamelCase which faker properties use
                     //eg. last_name is converted to lastName
-                    $faker_propery = $this->toLowerCamelCase($field->name);
-                    $event->return = $faker->$faker_propery;
+                    $faker_property = $this->toLowerCamelCase($field->name);
+                    $event->return = $faker->$faker_property;
                 }
                 catch (Exception $e) {
                     $event->return = "This is an example {$field->label}";
                 }
+            }
+        }
+        elseif($field->type == "FieldtypePage") {
+            $error = false;
+            //if no pages selected, create them via faker
+            if(count($event->return) == 0) {
+                //see if faker property has been set on the Input tab of the field settings
+                if($field->faker_property) {
+                    //see if faker has a property matched to the name of the text field
+                    try {
+                        $faker_property = $field->faker_property;
+                        $test = $faker->$faker_property;
+                    }
+                    catch (Exception $e) {
+                        $error = true;
+                    }
+                }
+                else {
+                    //see if faker has a property matched to the name of the text field
+                    try {
+                        //convert field name which is likely in snakecase to lowerCamelCase which faker properties use
+                        //eg. last_name is converted to lastName
+                        $faker_property = $this->toLowerCamelCase($field->name);
+                        $test = $faker->$faker_property;
+                    }
+                    catch (Exception $e) {
+                        $error = true;
+                    }
+                }
+                $fakerValues = new PageArray();
+                for($i=0;$i<mt_rand(2,10);$i++) {
+                    $np = new Page();
+                    $np->template = "home"; //TODO home is just a dummy setting at the moment
+                    if($error) {
+                        $np->title = str_replace('.','',$faker->sentence(mt_rand(1,3)));
+                    }
+                    else {
+                        $np->title = $faker->$faker_property;
+                    }
+                    $fakerValues->add($np);
+                }
+                $event->return = $fakerValues;
+
             }
         }
         elseif($field->type == "FieldtypeDatetime") {
@@ -184,131 +192,18 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
         }
     }
 
-    protected function toLowerCamelCase ($text) {
-        return lcfirst(str_replace(' ', '', ucwords(str_replace('_', ' ', $text))));
-    }
 
-    protected function deletePages ($pidArray) {
-        foreach($pidArray as $pid) {
-            $p = wire('pages')->get($pid);
-            if($p->hasStatus(Page::statusLocked)) {
-                wire('pages')->delete($p, true);
-            }
-        }
-    }
 
-    public function textareaConfig(HookEvent $event) {
 
-        // get existing inputfields from getConfigInputfields
-        $inputfields = $event->return;
-
-        $fieldset = $this->modules->get("InputfieldFieldset");
-        $fieldset->attr('id', 'autocontent_options');
-        $fieldset->label = "AutoContent Options";
-        $fieldset->description = "These options control the automatically generated lorem ipsum text if the field is empty.";
-        $fieldset->collapsed = Inputfield::collapsedYes;
-        $inputfields->add($fieldset);
-
-        $f = $this->modules->get('InputfieldInteger');
-        $f->label = __('Number of paragraphs');
-        $f->description = __('The number of paragraphs generated.');
-        $f->attr('name', 'auto_content_number_paragraphs');
-        $f->columnWidth = 50;
-        $auto_content_length_paragraphs = $this->fields->get($event->object->name)->auto_content_number_paragraphs;
-        $f->value = $auto_content_length_paragraphs ? $auto_content_length_paragraphs : 3;
-        $fieldset->append($f);
-
-        $f = $this->modules->get('InputfieldSelect');
-        $f->label = __('Length of paragraphs');
-        $f->description = __('The length of the paragraphs.');
-        $f->attr('name', 'auto_content_length_paragraphs');
-        $f->columnWidth = 50;
-        $f->addOption('short', 'Short');
-        $f->addOption('medium', 'Medium');
-        $f->addOption('long', 'Long');
-        $f->addOption('verylong', 'Very Long');
-        $auto_content_length_paragraphs = $this->fields->get($event->object->name)->auto_content_length_paragraphs;
-        $f->value = $auto_content_length_paragraphs ? $auto_content_length_paragraphs : 'medium';
-        $fieldset->append($f);
-
-        //html options if RTE textarea fields - CKEditor, TinyMCE etc
-        if($this->fields->get($event->object->name)->inputfieldClass != 'InputfieldTextarea') {
-
-            $f = $this->modules->get('InputfieldCheckbox');
-            $f->label = __('Add Headers');
-            $f->description = __('Inlude random headers (<h1>, <h2>, etc) headers throughout the text.');
-            $f->columnWidth = 33;
-            $f->attr('name', 'auto_content_add_headers');
-            $f->attr('checked', $this->fields->get($event->object->name)->auto_content_add_headers == '1' ? 'checked' : '');
-            $fieldset->append($f);
-
-            $f = $this->modules->get('InputfieldCheckbox');
-            $f->label = __('Decorate paragraphs');
-            $f->description = __('Add bold, italic and marked text.');
-            $f->columnWidth = 34;
-            $f->attr('name', 'auto_content_decorate_paragraphs');
-            $f->attr('checked', $this->fields->get($event->object->name)->auto_content_decorate_paragraphs == '1' ? 'checked' : '');
-            $fieldset->append($f);
-
-            $f = $this->modules->get('InputfieldCheckbox');
-            $f->label = __('Add Links');
-            $f->description = __('Include links (<a>) throughout the text.');
-            $f->columnWidth = 33;
-            $f->attr('name', 'auto_content_add_links');
-            $f->attr('checked', $this->fields->get($event->object->name)->auto_content_add_links == '1' ? 'checked' : '');
-            $fieldset->append($f);
-
-            $f = $this->modules->get('InputfieldCheckbox');
-            $f->label = __('Add Unordered Lists');
-            $f->description = __('Include random unordered lists (<ul>) throughout the text.');
-            $f->columnWidth = 20;
-            $f->attr('name', 'auto_content_add_unordered_lists');
-            $f->attr('checked', $this->fields->get($event->object->name)->auto_content_add_unordered_lists == '1' ? 'checked' : '');
-            $fieldset->append($f);
-
-            $f = $this->modules->get('InputfieldCheckbox');
-            $f->label = __('Add Ordered Lists');
-            $f->description = __('Include random ordered lists (<ol>) throughout the text.');
-            $f->columnWidth = 20;
-            $f->attr('name', 'auto_content_add_ordered_lists');
-            $f->attr('checked', $this->fields->get($event->object->name)->auto_content_add_ordered_lists == '1' ? 'checked' : '');
-            $fieldset->append($f);
-
-            $f = $this->modules->get('InputfieldCheckbox');
-            $f->label = __('Add Description Lists');
-            $f->description = __('Include random description lists (<dl>) throughout the text.');
-            $f->columnWidth = 20;
-            $f->attr('name', 'auto_content_add_description_lists');
-            $f->attr('checked', $this->fields->get($event->object->name)->auto_content_add_description_lists == '1' ? 'checked' : '');
-            $fieldset->append($f);
-
-            $f = $this->modules->get('InputfieldCheckbox');
-            $f->label = __('Add Blockquotes');
-            $f->description = __('Include blockquotes (<blockquote>) throughout the text.');
-            $f->columnWidth = 20;
-            $f->attr('name', 'auto_content_add_blockquotes');
-            $f->attr('checked', $this->fields->get($event->object->name)->auto_content_add_blockquotes == '1' ? 'checked' : '');
-            $fieldset->append($f);
-
-            $f = $this->modules->get('InputfieldCheckbox');
-            $f->label = __('Add Code Blocks');
-            $f->description = __('Include code blocks (<pre>) throughout the text.');
-            $f->columnWidth = 20;
-            $f->attr('name', 'auto_content_add_code');
-            $f->attr('checked', $this->fields->get($event->object->name)->auto_content_add_code == '1' ? 'checked' : '');
-            $fieldset->append($f);
-
-        }
-
-    }
-
-    public function textConfig(HookEvent $event) {
+    public function fieldConfig(HookEvent $event) {
 
         // require the Faker autoloader
         require_once $this->config->paths->siteModules.'/AutoContent/vendor/autoload.php';
 
         // use the factory to create a Faker\Generator instance
         $faker = $this->data['locale'] ? Faker\Factory::create($this->data['locale']) : Faker\Factory::create();
+
+        $field = wire('fields')->get($event->object->name);
 
         // get existing inputfields from getConfigInputfields
         $inputfields = $event->return;
@@ -320,23 +215,156 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
         $fieldset->collapsed = Inputfield::collapsedYes;
         $inputfields->add($fieldset);
 
-        $f = $this->modules->get('InputfieldText');
-        $f->label = __('Faker property');
-        $f->description = __('The Faker property you want to use to auto populate content. You can use anything from the list of formatters at: [https://github.com/fzaninotto/Faker#formatters](https://github.com/fzaninotto/Faker#formatters)');
-        $autoFakerProperty = $this->toLowerCamelCase($event->object->name);
 
-        try {
-            $faker_propery = $this->toLowerCamelCase($event->object->name);
-            $faker->$faker_propery;
-            $f->notes = __("This field has been automatically matched to the \"$faker_propery\" Faker property so you can leave it empty.");
-        }
-        catch (Exception $e) {
-            $f->notes = __("There is no Faker property that matches the name of this field, so you will need to enter one manually.");
+        if($field->type != "FieldtypeTextarea") {
+
+            $f = $this->modules->get('InputfieldText');
+            $f->label = __('Faker property');
+            $f->description = __('The Faker property you want to use to auto populate content. You can use anything from the list of formatters at: [https://github.com/fzaninotto/Faker#formatters](https://github.com/fzaninotto/Faker#formatters)');
+            $autoFakerProperty = $this->toLowerCamelCase($field->name);
+
+            try {
+                $faker_property = $this->toLowerCamelCase($field->name);
+                $faker->$faker_property;
+                $f->notes = __("This field has been automatically matched to the \"$faker_property\" Faker property so you can leave it empty.");
+            }
+            catch (Exception $e) {
+                $f->notes = __("There is no Faker property that matches the name of this field, so you will need to enter one manually.");
+            }
+
+            $f->attr('name', 'faker_property');
+            $f->value = $field->faker_property;
+            $fieldset->append($f);
         }
 
-        $f->attr('name', 'faker_property');
-        $f->value = $this->fields->get($event->object->name)->faker_property;
-        $fieldset->append($f);
+        if($field->type == "FieldtypeTextarea") {
+
+            $f = $this->modules->get('InputfieldInteger');
+            $f->label = __('Number of paragraphs');
+            $f->description = __('The number of paragraphs generated.');
+            $f->attr('name', 'auto_content_number_paragraphs');
+            $f->columnWidth = 50;
+            $auto_content_length_paragraphs = $this->fields->get($event->object->name)->auto_content_number_paragraphs;
+            $f->value = $auto_content_length_paragraphs ? $auto_content_length_paragraphs : 3;
+            $fieldset->append($f);
+
+            $f = $this->modules->get('InputfieldSelect');
+            $f->label = __('Length of paragraphs');
+            $f->description = __('The length of the paragraphs.');
+            $f->attr('name', 'auto_content_length_paragraphs');
+            $f->columnWidth = 50;
+            $f->addOption('short', 'Short');
+            $f->addOption('medium', 'Medium');
+            $f->addOption('long', 'Long');
+            $f->addOption('verylong', 'Very Long');
+            $auto_content_length_paragraphs = $this->fields->get($event->object->name)->auto_content_length_paragraphs;
+            $f->value = $auto_content_length_paragraphs ? $auto_content_length_paragraphs : 'medium';
+            $fieldset->append($f);
+
+            //html options if RTE textarea fields - CKEditor, TinyMCE etc
+            if($this->fields->get($event->object->name)->inputfieldClass != 'InputfieldTextarea') {
+
+                $f = $this->modules->get('InputfieldCheckbox');
+                $f->label = __('Add Headers');
+                $f->description = __('Inlude random headers (<h1>, <h2>, etc) headers throughout the text.');
+                $f->columnWidth = 33;
+                $f->attr('name', 'auto_content_add_headers');
+                $f->attr('checked', $this->fields->get($event->object->name)->auto_content_add_headers == '1' ? 'checked' : '');
+                $fieldset->append($f);
+
+                $f = $this->modules->get('InputfieldCheckbox');
+                $f->label = __('Decorate paragraphs');
+                $f->description = __('Add bold, italic and marked text.');
+                $f->columnWidth = 34;
+                $f->attr('name', 'auto_content_decorate_paragraphs');
+                $f->attr('checked', $this->fields->get($event->object->name)->auto_content_decorate_paragraphs == '1' ? 'checked' : '');
+                $fieldset->append($f);
+
+                $f = $this->modules->get('InputfieldCheckbox');
+                $f->label = __('Add Links');
+                $f->description = __('Include links (<a>) throughout the text.');
+                $f->columnWidth = 33;
+                $f->attr('name', 'auto_content_add_links');
+                $f->attr('checked', $this->fields->get($event->object->name)->auto_content_add_links == '1' ? 'checked' : '');
+                $fieldset->append($f);
+
+                $f = $this->modules->get('InputfieldCheckbox');
+                $f->label = __('Add Unordered Lists');
+                $f->description = __('Include random unordered lists (<ul>) throughout the text.');
+                $f->columnWidth = 20;
+                $f->attr('name', 'auto_content_add_unordered_lists');
+                $f->attr('checked', $this->fields->get($event->object->name)->auto_content_add_unordered_lists == '1' ? 'checked' : '');
+                $fieldset->append($f);
+
+                $f = $this->modules->get('InputfieldCheckbox');
+                $f->label = __('Add Ordered Lists');
+                $f->description = __('Include random ordered lists (<ol>) throughout the text.');
+                $f->columnWidth = 20;
+                $f->attr('name', 'auto_content_add_ordered_lists');
+                $f->attr('checked', $this->fields->get($event->object->name)->auto_content_add_ordered_lists == '1' ? 'checked' : '');
+                $fieldset->append($f);
+
+                $f = $this->modules->get('InputfieldCheckbox');
+                $f->label = __('Add Description Lists');
+                $f->description = __('Include random description lists (<dl>) throughout the text.');
+                $f->columnWidth = 20;
+                $f->attr('name', 'auto_content_add_description_lists');
+                $f->attr('checked', $this->fields->get($event->object->name)->auto_content_add_description_lists == '1' ? 'checked' : '');
+                $fieldset->append($f);
+
+                $f = $this->modules->get('InputfieldCheckbox');
+                $f->label = __('Add Blockquotes');
+                $f->description = __('Include blockquotes (<blockquote>) throughout the text.');
+                $f->columnWidth = 20;
+                $f->attr('name', 'auto_content_add_blockquotes');
+                $f->attr('checked', $this->fields->get($event->object->name)->auto_content_add_blockquotes == '1' ? 'checked' : '');
+                $fieldset->append($f);
+
+                $f = $this->modules->get('InputfieldCheckbox');
+                $f->label = __('Add Code Blocks');
+                $f->description = __('Include code blocks (<pre>) throughout the text.');
+                $f->columnWidth = 20;
+                $f->attr('name', 'auto_content_add_code');
+                $f->attr('checked', $this->fields->get($event->object->name)->auto_content_add_code == '1' ? 'checked' : '');
+                $fieldset->append($f);
+
+            }
+        }
+
+    }
+
+
+    public function createOrDeletePages(HookEvent $event) {
+
+        if($this->input->post->settingsSaved == 1) {
+
+            //delete existing generated pages
+            if($this->input->post->delete_generated_pages) {
+                $this->deletePages($this->data['generatedPages']);
+                unset($this->data['generatedPages']);
+            }
+
+            //add new generated pages
+            if($this->input->post->number_of_pages) {
+                // require the Faker autoloader
+                require_once $this->config->paths->siteModules.'/AutoContent/vendor/autoload.php';
+
+                // use the factory to create a Faker\Generator instance
+                $faker = $this->data['locale'] ? Faker\Factory::create($this->data['locale']) : Faker\Factory::create();
+
+                for($i=0;$i<$this->input->post->number_of_pages;$i++) {
+                    $np = new Page();
+                    $np->parent = $this->input->post->parent_page;
+                    $np->template = $this->input->post->page_template;
+                    $np->title = str_replace('.','',$faker->sentence(mt_rand(1,3)));
+                    $np->addStatus(Page::statusLocked);
+                    $np->save();
+                    $this->data['generatedPages'][] = $np->id;
+                }
+            }
+            $this->input->post->settingsSaved = null;
+            $this->modules->saveModuleConfigData($this->modules->get("AutoContent"), $this->data);
+        }
 
     }
 
@@ -391,7 +419,6 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
 
         $f = wire('modules')->get('InputfieldPageListSelect');
         $f->label = __('Parent Page');
-        //$f->showIf = "number_of_pages!=''";
         $f->required = true;
         $f->requiredIf = "number_of_pages!=''";
         $f->description = __('The parent of pages that will be generated.');
@@ -400,7 +427,6 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
 
         $f = wire('modules')->get('InputfieldSelect');
         $f->label = __('Page Template');
-        //$f->showIf = "number_of_pages!=''";
         $f->required = true;
         $f->requiredIf = "number_of_pages!=''";
         $f->description = __('The template for the pages that will be generated.');
@@ -419,6 +445,25 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
 
         return $wrapper;
     }
+
+
+    /**
+    * Helper functions
+    */
+
+    protected function toLowerCamelCase ($text) {
+        return lcfirst(str_replace(' ', '', ucwords(str_replace('_', ' ', $text))));
+    }
+
+    protected function deletePages ($pidArray) {
+        foreach($pidArray as $pid) {
+            $p = wire('pages')->get($pid);
+            if($p->hasStatus(Page::statusLocked)) {
+                wire('pages')->delete($p, true);
+            }
+        }
+    }
+
 
     /**
      * Called only when your module is uninstalled
