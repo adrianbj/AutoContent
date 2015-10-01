@@ -21,7 +21,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'title' => 'Auto Content',
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
-            'version' => 8,
+            'version' => 9,
             'autoload' => true,
             'icon' => 'lightbulb-o'
         );
@@ -125,7 +125,8 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                     }
                 }
                 $fakerValues = new PageArray();
-                for($i=0;$i<mt_rand(2,10);$i++) {
+                $numPages = $field->derefAsPage == 0 ? mt_rand(2,10) : 1;
+                for($i=0;$i<$numPages;$i++) {
                     $np = new Page();
                     $np->template = "home"; //TODO home is just a dummy setting at the moment
                     if($error) {
