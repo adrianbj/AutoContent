@@ -21,7 +21,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'title' => 'Auto Content',
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
-            'version' => 11,
+            'version' => 13,
             'autoload' => true,
             'icon' => 'lightbulb-o'
         );
@@ -128,25 +128,39 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                 $numPages = $field->derefAsPage == 0 ? mt_rand(2,10) : 1;
                 $inputfield = $field->getInputfield($page);
                 $selectablePages = $inputfield->getSelectablePages($page);
-                $availableTemplates = array();
+                $availableTemplates = new wireArray();
                 foreach($selectablePages as $sp) {
-                    $availableTemplates[] = $sp->template->name;
+                    if($sp->template != "admin") $availableTemplates->add($sp->template);
                 }
 
-                $firstTemplate = $this->templates->get($availableTemplates[0]);
+                // new fieldgroup with all possible fields from templates of selectable pages
+                $fg = new Fieldgroup();
+                $fg->name = 'master_template';
+                $fg->add($this->fields->get('title')); // needed title field
+
+                foreach($availableTemplates as $t) {
+                    foreach($t->fields as $f) {
+                        if(!$fg->hasField($f)) $fg->add($f);
+                    }
+                }
+
+                // set up the master template with this new master fieldgroup of fields
+                $masterTemplate = new Template();
+                $masterTemplate->name = 'master_template';
+                $masterTemplate->fieldgroup = $fg; // add the fieldgroup
 
                 for($i=0;$i<$numPages;$i++) {
                     $np = new Page();
-                    $np->template = $firstTemplate;
+                    $np->template = $masterTemplate;
                     if($error) {
                         $np->title = str_replace('.','',$faker->sentence(mt_rand(1,3)));
-                        foreach($firstTemplate->fields as $f) {
+                        foreach($masterTemplate->fields as $f) {
                             if($f->type instanceof FieldtypeText) $np->{$f->name} = str_replace('.','',$faker->sentence(mt_rand(1,3)));
                         }
                     }
                     else {
                         $np->title = $faker->$faker_property;
-                        foreach($firstTemplate->fields as $f) {
+                        foreach($masterTemplate->fields as $f) {
                             if($f->type instanceof FieldtypeText) $np->{$f->name} = $faker->$faker_property;
                         }
                     }
