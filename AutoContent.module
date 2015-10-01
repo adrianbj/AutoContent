@@ -21,7 +21,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'title' => 'Auto Content',
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
-            'version' => 9,
+            'version' => 11,
             'autoload' => true,
             'icon' => 'lightbulb-o'
         );
@@ -126,15 +126,32 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                 }
                 $fakerValues = new PageArray();
                 $numPages = $field->derefAsPage == 0 ? mt_rand(2,10) : 1;
+                $inputfield = $field->getInputfield($page);
+                $selectablePages = $inputfield->getSelectablePages($page);
+                $availableTemplates = array();
+                foreach($selectablePages as $sp) {
+                    $availableTemplates[] = $sp->template->name;
+                }
+
+                $firstTemplate = $this->templates->get($availableTemplates[0]);
+
                 for($i=0;$i<$numPages;$i++) {
                     $np = new Page();
-                    $np->template = "home"; //TODO home is just a dummy setting at the moment
+                    $np->template = $firstTemplate;
                     if($error) {
                         $np->title = str_replace('.','',$faker->sentence(mt_rand(1,3)));
+                        foreach($firstTemplate->fields as $f) {
+                            if($f->type instanceof FieldtypeText) $np->{$f->name} = str_replace('.','',$faker->sentence(mt_rand(1,3)));
+                        }
                     }
                     else {
                         $np->title = $faker->$faker_property;
+                        foreach($firstTemplate->fields as $f) {
+                            if($f->type instanceof FieldtypeText) $np->{$f->name} = $faker->$faker_property;
+                        }
                     }
+                    $np->name = $this->sanitizer->pageName($np->title, true);
+
                     $fakerValues->add($np);
                 }
                 $event->return = $fakerValues;
