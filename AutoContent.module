@@ -55,9 +55,6 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
     }
 
     public function init() {
-    }
-
-    public function ready() {
         $this->addHookAfter('Inputfield::getConfigInputfields', $this, 'fieldConfig');
         $this->addHookAfter('Fieldtype::formatValue', $this, 'autoContent');
         if($this->input->get->name == "AutoContent") $this->addHookAfter('Modules::saveModuleConfigData', $this, 'createOrDeletePages');
