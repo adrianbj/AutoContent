@@ -21,7 +21,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'title' => 'Auto Content',
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
-            'version' => 13,
+            'version' => 15,
             'autoload' => true,
             'icon' => 'lightbulb-o'
         );
@@ -54,8 +54,10 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
        }
     }
 
-
     public function init() {
+    }
+
+    public function ready() {
         $this->addHookAfter('Inputfield::getConfigInputfields', $this, 'fieldConfig');
         $this->addHookAfter('Fieldtype::formatValue', $this, 'autoContent');
         if($this->input->get->name == "AutoContent") $this->addHookAfter('Modules::saveModuleConfigData', $this, 'createOrDeletePages');
@@ -124,7 +126,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                         $error = true;
                     }
                 }
-                $fakerValues = new PageArray();
+                $fakedPages = new PageArray();
                 $numPages = $field->derefAsPage == 0 ? mt_rand(2,10) : 1;
                 $inputfield = $field->getInputfield($page);
                 $selectablePages = $inputfield->getSelectablePages($page);
@@ -166,9 +168,9 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                     }
                     $np->name = $this->sanitizer->pageName($np->title, true);
 
-                    $fakerValues->add($np);
+                    $fakedPages->add($np);
                 }
-                $event->return = $fakerValues;
+                $event->return = $fakedPages;
 
             }
         }
@@ -210,7 +212,9 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
         elseif($field->type instanceof FieldtypeImage) {
             $width = $field->minWidth ? $field->minWidth : ($field->maxWidth ? $field->maxWidth : 1000);
             $height = $field->minHeight ? $field->minHeight : ($field->maxHeight ? $field->maxHeight : 500);
-            $event->return = "http://placehold.it/{$width}x{$height}";
+            $pageimages = $this->getBlankValue($page, $field);
+            $fakerImage = new Pageimage($pageimages, $faker->imageUrl($width, $height, $field->auto_image_content_type));
+            $event->return = $fakerImage;
         }
         elseif($field->type == "FieldtypeMapMarker") {
             $map = new stdClass();
@@ -247,27 +251,6 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
         $fieldset->collapsed = Inputfield::collapsedYes;
         $inputfields->add($fieldset);
 
-
-        if($field->type != "FieldtypeTextarea") {
-
-            $f = $this->modules->get('InputfieldText');
-            $f->label = __('Faker property');
-            $f->description = __('The Faker property you want to use to auto populate content. You can use anything from the list of formatters at: [https://github.com/fzaninotto/Faker#formatters](https://github.com/fzaninotto/Faker#formatters)');
-            $autoFakerProperty = $this->toLowerCamelCase($field->name);
-
-            try {
-                $faker_property = $this->toLowerCamelCase($field->name);
-                $faker->$faker_property;
-                $f->notes = __("This field has been automatically matched to the \"$faker_property\" Faker property so you can leave it empty.");
-            }
-            catch (Exception $e) {
-                $f->notes = __("There is no Faker property that matches the name of this field, so you will need to enter one manually.");
-            }
-
-            $f->attr('name', 'faker_property');
-            $f->value = $field->faker_property;
-            $fieldset->append($f);
-        }
 
         if($field->type == "FieldtypeTextarea") {
 
@@ -362,6 +345,60 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
 
             }
         }
+        elseif($field->type instanceof FieldtypeImage){
+            $f = $this->modules->get('InputfieldSelect');
+            $f->label = __('Image content type');
+            //$f->columnWidth = 50;
+            $f->attr('name', 'auto_image_content_type');
+            $f->addOption('abstract', 'Abstract');
+            $f->addOption('animals', 'Animals');
+            $f->addOption('business', 'Business');
+            $f->addOption('cats', 'Cats');
+            $f->addOption('city', 'City');
+            $f->addOption('fashion', 'Fashion');
+            $f->addOption('food', 'Food');
+            $f->addOption('nature', 'Nature');
+            $f->addOption('nightlife', 'Nightlife');
+            $f->addOption('people', 'People');
+            $f->addOption('sports', 'Sports');
+            $f->addOption('technics', 'Technics');
+            $f->addOption('transport', 'Transport');
+            $f->value = $this->fields->get($event->object->name)->auto_image_content_type;
+            $fieldset->append($f);
+
+            /*
+            $f = $this->modules->get('InputfieldSelect');
+            $f->label = __('Image color');
+            $f->columnWidth = 50;
+            $f->attr('name', 'auto_image_color');
+            $f->addOption('', 'Color');
+            $f->addOption('g', 'Greyscale (B&W)');
+            $f->value = $this->fields->get($event->object->name)->auto_image_color;
+            $fieldset->append($f);
+            */
+
+        }
+        else {
+
+            $f = $this->modules->get('InputfieldText');
+            $f->label = __('Faker property');
+            $f->description = __('The Faker property you want to use to auto populate content. You can use anything from the list of formatters at: [https://github.com/fzaninotto/Faker#formatters](https://github.com/fzaninotto/Faker#formatters)');
+            $autoFakerProperty = $this->toLowerCamelCase($field->name);
+
+            try {
+                $faker_property = $this->toLowerCamelCase($field->name);
+                $faker->$faker_property;
+                $f->notes = __("This field has been automatically matched to the \"$faker_property\" Faker property so you can leave it empty.");
+            }
+            catch (Exception $e) {
+                $f->notes = __("There is no Faker property that matches the name of this field, so you will need to enter one manually.");
+            }
+
+            $f->attr('name', 'faker_property');
+            $f->value = $field->faker_property;
+            $fieldset->append($f);
+        }
+
 
     }
 
@@ -494,6 +531,13 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                 wire('pages')->delete($p, true);
             }
         }
+    }
+
+    public function getBlankValue(Page $page, Field $field) {
+        $pageimages = new Pageimages($page);
+        $pageimages->setField($field);
+        $pageimages->setTrackChanges(true);
+        return $pageimages;
     }
 
 
