@@ -21,7 +21,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'title' => 'Auto Content',
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
-            'version' => 16,
+            'version' => 17,
             'autoload' => true,
             'icon' => 'lightbulb-o'
         );
@@ -422,7 +422,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                     $np = new Page();
                     $np->parent = $this->input->post->parent_page;
                     $np->template = $this->input->post->page_template;
-                    $np->title = str_replace('.','',$faker->sentence(mt_rand(1,3)));
+                    $np->title = $this->input->post->faker_property ? $faker->{$this->input->post->faker_property} : str_replace('.','',$faker->sentence(mt_rand(1,3)));
                     $np->addStatus(Page::statusLocked);
                     $np->save();
                     $this->data['generatedPages'][] = $np->id;
@@ -500,6 +500,13 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
         foreach(wire('templates') as $t) {
             $f->addOption($t->id, $t->label ? $t->label : $t->name);
         }
+        $fieldset->append($f);
+
+        $f = wire('modules')->get('InputfieldText');
+        $f->label = __('Faker property');
+        $f->description = __('The Faker property you want to use to auto populate page titles. You can use anything from the list of formatters at: [https://github.com/fzaninotto/Faker#formatters](https://github.com/fzaninotto/Faker#formatters)');
+        $f->notes = __('If left blank, it will use sentence(mt_rand(1,3)');
+        $f->attr('name', 'faker_property');
         $fieldset->append($f);
 
         $f = wire('modules')->get('InputfieldCheckbox');
