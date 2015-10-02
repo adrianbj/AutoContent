@@ -21,7 +21,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'title' => 'Auto Content',
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
-            'version' => 15,
+            'version' => 16,
             'autoload' => true,
             'icon' => 'lightbulb-o'
         );
@@ -62,7 +62,6 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
 
 
     public function autoContent($event) {
-
         $page = $event->arguments(0);
         if($page->template == 'admin') return;
         $field = $event->arguments(1);
@@ -210,7 +209,8 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             $width = $field->minWidth ? $field->minWidth : ($field->maxWidth ? $field->maxWidth : 1000);
             $height = $field->minHeight ? $field->minHeight : ($field->maxHeight ? $field->maxHeight : 500);
             $pageimages = $this->getBlankValue($page, $field);
-            $fakerImage = new Pageimage($pageimages, $faker->imageUrl($width, $height, $field->auto_image_content_type));
+            $fakerImage = new Pageimage($pageimages, $faker->image($page->filesManager()->path(), $width, $height, $field->auto_image_content_type));
+            $fakerImage->rename('autocontent_'.$fakerImage->name);
             $event->return = $fakerImage;
         }
         elseif($field->type == "FieldtypeMapMarker") {
@@ -541,11 +541,37 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
     /**
      * Called only when your module is uninstalled
      *
-     * Delete all automatically generated pages
-     *
      */
     public function ___uninstall() {
-        $this->deletePages($this->data['generatedPages']);
+        // delete all automatically generated pages and temporary images
+        if(isset($this->data['generatedPages'])) $this->deletePages($this->data['generatedPages']);
+
+        // delete any temporary faker images
+        ini_set('max_execution_time', 60*5); // 5 minutes, increase as needed
+        $dir = new DirectoryIterator(wire('config')->paths->files);
+
+        foreach($dir as $file) {
+            if($file->isDot() || !$file->isDir()) continue;
+            $id = $file->getFilename();
+            wire('log')->save('testing', $id);
+            if(!ctype_digit("$id")) continue;
+            $page = wire('pages')->get((int) $id);
+            if(!$page->id) {
+                continue;
+            }
+
+            // now find all the files present on the page
+            // identify those that are not part of our $valid array
+            $d = new DirectoryIterator($page->filesManager->path());
+            foreach($d as $f) {
+                if($f->isDot() || !$f->isFile()) continue;
+                if (strpos($f,'autocontent_') !== false) {
+                    unlink($page->filesManager->path().$f);
+                }
+            }
+            wire('pages')->uncache($page); // just in case we need the memory
+
+        }
     }
 
 }
