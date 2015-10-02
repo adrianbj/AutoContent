@@ -21,7 +21,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'title' => 'Auto Content',
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
-            'version' => 17,
+            'version' => 18,
             'autoload' => true,
             'icon' => 'lightbulb-o'
         );
@@ -66,7 +66,10 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
         if($page->template == 'admin') return;
         $field = $event->arguments(1);
 
+        //if not empty then display available real content
         if(!is_object($event->return) && $event->return != '') return;
+        if(is_object($event->return) && count($event->return) > 0) return;
+
 
         // require the Faker autoloader
         require_once $this->config->paths->siteModules.'/AutoContent/vendor/autoload.php';
@@ -208,10 +211,22 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
         elseif($field->type instanceof FieldtypeImage) {
             $width = $field->minWidth ? $field->minWidth : ($field->maxWidth ? $field->maxWidth : 1000);
             $height = $field->minHeight ? $field->minHeight : ($field->maxHeight ? $field->maxHeight : 500);
-            $pageimages = $this->getBlankValue($page, $field);
-            $fakerImage = new Pageimage($pageimages, $faker->image($page->filesManager()->path(), $width, $height, $field->auto_image_content_type));
-            $fakerImage->rename('autocontent_'.$fakerImage->name);
-            $event->return = $fakerImage;
+
+            if($field->maxFiles == 1) {
+                $pageimages = $this->getBlankValue($page, $field);
+                $fakerImage = new Pageimage($pageimages, $faker->image($page->filesManager()->path(), $width, $height, $field->auto_image_content_type));
+                $fakerImage->rename('autocontent_'.$fakerImage->name);
+                $event->return = $fakerImage;
+            }
+            else {
+                $fakerImages = new Pageimages($page);
+                $pageimages = $this->getBlankValue($page, $field);
+                $fakerImage = new Pageimage($pageimages, $faker->image($page->filesManager()->path(), $width, $height, $field->auto_image_content_type));
+                $fakerImage->rename('autocontent_'.$fakerImage->name);
+                $pageimages->add($fakerImage);
+                $event->return = $pageimages;
+            }
+
         }
         elseif($field->type == "FieldtypeMapMarker") {
             $map = new stdClass();
