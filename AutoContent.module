@@ -21,7 +21,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'title' => 'Auto Content',
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
-            'version' => 19,
+            'version' => 21,
             'autoload' => true,
             'icon' => 'lightbulb-o'
         );
@@ -80,7 +80,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
         //if MapMarker set to default then exit
         if(isset($event->return->lat) && $event->return->lat != '0.000000') return;
 
-        if($field->type instanceof FieldtypeText && $field->type != "FieldtypeTextarea") {
+        if($field->type instanceof FieldtypeText && $field->type != "FieldtypeURL" && $field->type != "FieldtypeDatetime" && $field->type != "FieldtypeTextarea") {
             //see if faker property has been set on the Input tab of the field settings
             if($field->faker_property) {
                 $event->return = $faker->{$field->faker_property};
@@ -174,7 +174,25 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             }
         }
         elseif($field->type == "FieldtypeDatetime") {
-            $event->return = $field->dateOutputFormat ? date($field->dateOutputFormat,time()) : time();
+            //see if faker property has been set on the Input tab of the field settings
+            if($field->faker_property) {
+                $fakedDate = $faker->{$field->faker_property}($field->max_datetime);
+            }
+            else {
+                //see if faker has a property matched to the name of the text field
+                try {
+                    //convert field name which is likely in snakecase to lowerCamelCase which faker properties use
+                    //eg. date_time is converted to dateTime
+                    $faker_property = $this->toLowerCamelCase($field->name);
+                    $fakedDate = $faker->$faker_property($field->max_datetime);
+                }
+                catch (Exception $e) {
+                    $fakedDate = $faker->dateTime($field->max_datetime);
+                }
+            }
+            (array) $fakedDate;
+            $datetime = is_object($fakedDate) ? $fakedDate->date : $fakedDate;
+            $event->return = $field->dateOutputFormat ? date($field->dateOutputFormat, (is_numeric($datetime) ? $datetime : strtotime($datetime))) : $datetime;
         }
         elseif($field->type == "FieldtypeInteger") {
             $event->return = mt_rand($field->min ? $field->min : 0, $field->max ? $field->max : getrandmax());
@@ -184,10 +202,10 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             $event->return = mt_rand(($field->min ? $field->min : 0) * $scale, ($field->max ? $field->max : getrandmax()) * $scale) / $scale;
         }
         elseif($field->type == "FieldtypeEmail") {
-            $event->return = "info@".wire('config')->httpHost;
+            $event->return = $field->faker_property ? $field->faker_property : $faker->email;
         }
         elseif($field->type == "FieldtypeURL") {
-            $event->return = "http://".wire('config')->httpHost;
+            $event->return = $field->faker_property ? $field->faker_property : $faker->url;
         }
         elseif($field->type == "FieldtypeTextarea") {
             //Plain text
@@ -427,6 +445,15 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             */
 
         }
+        elseif($field->type == 'FieldtypeURL') {
+            $f = $this->modules->get('InputfieldText');
+            $f->label = __('Faker property');
+            $f->description = __('The Faker property you want to use to auto populate content. You can use anything from the list of formatters at: [https://github.com/fzaninotto/Faker#formatters](https://github.com/fzaninotto/Faker#formatters)');
+            $f->notes = __('This will automatically use the "url" Faker property so you can leave it empty.');
+            $f->attr('name', 'faker_property');
+            $f->value = $field->faker_property;
+            $fieldset->append($f);
+        }
         else {
 
             $f = $this->modules->get('InputfieldText');
@@ -448,6 +475,15 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             $fieldset->append($f);
         }
 
+        if($field->type == "FieldtypeDatetime") {
+            $f = wire('modules')->get('InputfieldDatetime');
+            $f->label = __('Latest datetime');
+            $f->description = __('The latest datetime to generate.');
+            $f->notes = __('If empty, the current datetime will be used.');
+            $f->attr('name', 'max_datetime');
+            $f->value = $this->fields->get($event->object->name)->max_datetime;
+            $fieldset->append($f);
+        }
 
     }
 
