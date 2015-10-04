@@ -21,7 +21,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'title' => 'Auto Content',
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
-            'version' => 18,
+            'version' => 19,
             'autoload' => true,
             'icon' => 'lightbulb-o'
         );
@@ -214,16 +214,35 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
 
             if($field->maxFiles == 1) {
                 $pageimages = $this->getBlankValue($page, $field);
-                $fakerImage = new Pageimage($pageimages, $faker->image($page->filesManager()->path(), $width, $height, $field->auto_image_content_type));
-                $fakerImage->rename('autocontent_'.$fakerImage->name);
+                if(!file_exists($page->filesManager()->path().'autocontent_0.jpg')) {
+                    $isNew = true;
+                    $imagePath = $faker->image($page->filesManager()->path(), $width, $height, $field->auto_image_content_type);
+                }
+                else {
+                    $isNew = false;
+                    $imagePath = $page->filesManager()->path().'autocontent_0.jpg';
+                }
+                $fakerImage = new Pageimage($pageimages, $imagePath);
+                if($isNew) $fakerImage->rename('autocontent_0.jpg');
                 $event->return = $fakerImage;
             }
             else {
                 $fakerImages = new Pageimages($page);
                 $pageimages = $this->getBlankValue($page, $field);
-                $fakerImage = new Pageimage($pageimages, $faker->image($page->filesManager()->path(), $width, $height, $field->auto_image_content_type));
-                $fakerImage->rename('autocontent_'.$fakerImage->name);
-                $pageimages->add($fakerImage);
+                $numImages = mt_rand($field->min_num_of_images ? $field->min_num_of_images : 1, $field->max_num_of_images ? $field->max_num_of_images : 3);
+                for($i=0;$i<$numImages;$i++) {
+                    if(!file_exists($page->filesManager()->path().'autocontent_'.$i.'.jpg')) {
+                        $isNew = true;
+                        $imagePath = $faker->image($page->filesManager()->path(), $width, $height, $field->auto_image_content_type);
+                    }
+                    else {
+                        $isNew = false;
+                        $imagePath = $page->filesManager()->path().'autocontent_'.$i.'.jpg';
+                    }
+                    $fakerImage = new Pageimage($pageimages, $imagePath);
+                    if($isNew) $fakerImage->rename('autocontent_'.$i.'.jpg');
+                    $pageimages->add($fakerImage);
+                }
                 $event->return = $pageimages;
             }
 
@@ -376,6 +395,24 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             $f->addOption('technics', 'Technics');
             $f->addOption('transport', 'Transport');
             $f->value = $this->fields->get($event->object->name)->auto_image_content_type;
+            $fieldset->append($f);
+
+            $f = wire('modules')->get('InputfieldInteger');
+            $f->label = __('Min number of images');
+            $f->description = __('The minimum number of images to generate.');
+            $f->notes = __('If empty, the default of 1 will be used.');
+            $f->columnWidth = 50;
+            $f->attr('name', 'min_num_of_images');
+            $f->value = $this->fields->get($event->object->name)->min_num_of_images;
+            $fieldset->append($f);
+
+            $f = wire('modules')->get('InputfieldInteger');
+            $f->label = __('Max number of images');
+            $f->description = __('The maximum number of images to generate.');
+            $f->notes = __('If empty, the default of 3 will be used.');
+            $f->columnWidth = 50;
+            $f->attr('name', 'max_num_of_images');
+            $f->value = $this->fields->get($event->object->name)->max_num_of_images;
             $fieldset->append($f);
 
             /*
