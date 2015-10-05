@@ -21,7 +21,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'title' => 'Auto Content',
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
-            'version' => 22,
+            'version' => 23,
             'autoload' => true,
             'icon' => 'lightbulb-o'
         );
@@ -176,7 +176,12 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
         elseif($field->type == "FieldtypeDatetime") {
             //see if faker property has been set on the Input tab of the field settings
             if($field->faker_property) {
-                $fakedDate = $faker->{$field->faker_property}($field->max_datetime);
+                if($field->faker_property == "dateTimeBetween") {
+                    $fakedDate = $faker->{$field->faker_property}(date("Y-m-d g:i:s", $field->min_datetime), $field->max_datetime);
+                }
+                else {
+                    $fakedDate = $faker->{$field->faker_property}($field->max_datetime);
+                }
             }
             else {
                 //see if faker has a property matched to the name of the text field
@@ -475,9 +480,27 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             $fieldset->append($f);
         }
 
+
+        //Additional config settings
         if($field->type == "FieldtypeDatetime") {
+
             $f = wire('modules')->get('InputfieldDatetime');
-            $f->label = __('Latest datetime');
+            $f->label = __('Minimum datetime');
+            $f->columnWidth = 50;
+            $f->datepicker = InputfieldDatetime::datepickerFocus;
+            if($field->timeInputFormat) {
+                $f->attr('dateInputFormat', "Y-m-d");
+                $f->attr('timeInputFormat', "H:i:s");
+            }
+            $f->description = __('The earliest datetime to generate. For this to work, you need to change the Faker property to "dateTimeBetween".');
+            $f->notes = __('If empty, the current datetime will be used. If you changed the "Time Input Format" above to or from "None", you will need to save before seeing this change appropriately.');
+            $f->attr('name', 'min_datetime');
+            $f->value = $this->fields->get($event->object->name)->min_datetime;
+            $fieldset->append($f);
+
+            $f = wire('modules')->get('InputfieldDatetime');
+            $f->label = __('Maximum datetime');
+            $f->columnWidth = 50;
             $f->datepicker = InputfieldDatetime::datepickerFocus;
             if($field->timeInputFormat) {
                 $f->attr('dateInputFormat', "Y-m-d");
