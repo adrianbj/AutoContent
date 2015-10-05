@@ -480,8 +480,6 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             $f->label = __('Latest datetime');
             $f->datepicker = InputfieldDatetime::datepickerFocus;
             if($field->timeInputFormat) {
-                $f->attr('data-dateformat', "yy-mm-dd");
-                $f->attr('data-timeformat', "hh:mm:ss");
                 $f->attr('dateInputFormat', "Y-m-d");
                 $f->attr('timeInputFormat', "H:i:s");
             }
