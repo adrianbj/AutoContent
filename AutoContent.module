@@ -21,7 +21,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'title' => 'Auto Content',
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
-            'version' => 21,
+            'version' => 22,
             'autoload' => true,
             'icon' => 'lightbulb-o'
         );
@@ -478,8 +478,15 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
         if($field->type == "FieldtypeDatetime") {
             $f = wire('modules')->get('InputfieldDatetime');
             $f->label = __('Latest datetime');
+            $f->datepicker = InputfieldDatetime::datepickerFocus;
+            if($field->timeInputFormat) {
+                $f->attr('data-dateformat', "yy-mm-dd");
+                $f->attr('data-timeformat', "hh:mm:ss");
+                $f->attr('dateInputFormat', "Y-m-d");
+                $f->attr('timeInputFormat', "H:i:s");
+            }
             $f->description = __('The latest datetime to generate.');
-            $f->notes = __('If empty, the current datetime will be used.');
+            $f->notes = __('If empty, the current datetime will be used. If you changed the "Time Input Format" above to or from "None", you will need to save before seeing this change appropriately.');
             $f->attr('name', 'max_datetime');
             $f->value = $this->fields->get($event->object->name)->max_datetime;
             $fieldset->append($f);
