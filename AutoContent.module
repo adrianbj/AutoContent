@@ -21,7 +21,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'title' => 'Auto Content',
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
-            'version' => 23,
+            'version' => 24,
             'autoload' => true,
             'icon' => 'lightbulb-o'
         );
@@ -420,23 +420,25 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             $f->value = $this->fields->get($event->object->name)->auto_image_content_type;
             $fieldset->append($f);
 
-            $f = wire('modules')->get('InputfieldInteger');
-            $f->label = __('Min number of images');
-            $f->description = __('The minimum number of images to generate.');
-            $f->notes = __('If empty, the default of 1 will be used.');
-            $f->columnWidth = 50;
-            $f->attr('name', 'min_num_of_images');
-            $f->value = $this->fields->get($event->object->name)->min_num_of_images;
-            $fieldset->append($f);
+            if($this->fields->get($event->object->name)->maxFiles != 1) {
+                $f = wire('modules')->get('InputfieldInteger');
+                $f->label = __('Min number of images');
+                $f->description = __('The minimum number of images to generate.');
+                $f->notes = __('If empty, the default of 1 will be used.');
+                $f->columnWidth = 50;
+                $f->attr('name', 'min_num_of_images');
+                $f->value = $this->fields->get($event->object->name)->min_num_of_images;
+                $fieldset->append($f);
 
-            $f = wire('modules')->get('InputfieldInteger');
-            $f->label = __('Max number of images');
-            $f->description = __('The maximum number of images to generate.');
-            $f->notes = __('If empty, the default of 3 will be used.');
-            $f->columnWidth = 50;
-            $f->attr('name', 'max_num_of_images');
-            $f->value = $this->fields->get($event->object->name)->max_num_of_images;
-            $fieldset->append($f);
+                $f = wire('modules')->get('InputfieldInteger');
+                $f->label = __('Max number of images');
+                $f->description = __('The maximum number of images to generate.');
+                $f->notes = __('If empty, the default of 3 will be used.');
+                $f->columnWidth = 50;
+                $f->attr('name', 'max_num_of_images');
+                $f->value = $this->fields->get($event->object->name)->max_num_of_images;
+                $fieldset->append($f);
+            }
 
             /*
             $f = $this->modules->get('InputfieldSelect');
