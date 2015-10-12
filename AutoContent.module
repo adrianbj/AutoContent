@@ -21,7 +21,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'title' => 'Auto Content',
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
-            'version' => 24,
+            'version' => 25,
             'autoload' => true,
             'icon' => 'lightbulb-o'
         );
@@ -219,7 +219,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             }
             //RTEs
             else {
-                $event->return = file_get_contents("http://loripsum.net/api/{$field->auto_content_number_paragraphs}/{$field->auto_content_length_paragraphs}".
+                $loremIpsum = file_get_contents("http://loripsum.net/api/{$field->auto_content_number_paragraphs}/{$field->auto_content_length_paragraphs}".
                                     ($field->auto_content_add_headers ? '/headers' : '').
                                     ($field->auto_content_decorate_paragraphs ? '/decorate' : '').
                                     ($field->auto_content_add_unordered_lists ? '/ul' : '').
@@ -229,6 +229,46 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                                     ($field->auto_content_add_code ? '/code' : '').
                                     ($field->auto_content_add_links ? '/link' : '')
                                 );
+
+                if($field->auto_content_add_images) {
+                    //see if image field is available for this page's template
+                    foreach($page->fields as $f) {
+                        if($f->type instanceof FieldtypeImage) {
+                            $imageField = $f;
+                            break;
+                        }
+                    }
+
+                    if($imageField) {
+                        $text = str_replace('</p>', '', $loremIpsum);
+                        $paragraphs = explode('<p>', $text);
+
+                        $page->of(false);
+                        $finalHtml = '';
+                        foreach($paragraphs as $paragraph) {
+                            $randPosition = array_rand($field->auto_content_image_positions);
+                            if($field->auto_content_image_positions[$randPosition] == 'left') {
+                                $imageClass = 'class="align_left"';
+                                $imageWidth = 'width="50%"';
+                            }
+                            elseif($field->auto_content_image_positions[$randPosition] == 'right') {
+                                $imageClass = 'class="align_right"';
+                                $imageWidth = 'width="50%"';
+                            }
+                            else {
+                                $imageClass = '';
+                                $imageWidth = 'width="100%"';
+                            }
+                            if(strlen($paragraph) > 100) $finalHtml .= '<p><img ' . $imageWidth . ' '.$imageClass.' src="'.$page->filesManager()->url().'autocontent_'.mt_rand(1, $imageField->max_num_of_images-1).'.jpg" /></p>' . $paragraph . '<p style="clear:both">';
+                        }
+                        $page->of(true);
+                    }
+                }
+                else {
+                    $finalHtml = $loremIpsum;
+                }
+
+                $event->return = $finalHtml;
             }
         }
         elseif($field->type instanceof FieldtypeImage) {
@@ -252,23 +292,27 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             else {
                 $fakerImages = new Pageimages($page);
                 $pageimages = $this->getBlankValue($page, $field);
-                $numImages = mt_rand($field->min_num_of_images ? $field->min_num_of_images : 1, $field->max_num_of_images ? $field->max_num_of_images : 3);
-                for($i=0;$i<$numImages;$i++) {
+                // first create the max number of images allowed
+                $maxNumImages = $field->max_num_of_images ? $field->max_num_of_images : 3;
+                for($i=0;$i<$maxNumImages;$i++) {
                     if(!file_exists($page->filesManager()->path().'autocontent_'.$i.'.jpg')) {
-                        $isNew = true;
                         $imagePath = $faker->image($page->filesManager()->path(), $width, $height, $field->auto_image_content_type);
+                        rename($imagePath, $page->filesManager()->path().'autocontent_'.$i.'.jpg');
                     }
-                    else {
-                        $isNew = false;
-                        $imagePath = $page->filesManager()->path().'autocontent_'.$i.'.jpg';
-                    }
+                }
+                // now select a random number and set up this many pageimages
+                $randNumImages = mt_rand($field->min_num_of_images ? $field->min_num_of_images : 1, $field->max_num_of_images ? $field->max_num_of_images : 3);
+                for($i=0;$i<$randNumImages;$i++) {
+                    $imagePath = $page->filesManager()->path().'autocontent_'.$i.'.jpg';
                     $fakerImage = new Pageimage($pageimages, $imagePath);
-                    if($isNew) $fakerImage->rename('autocontent_'.$i.'.jpg');
                     $pageimages->add($fakerImage);
                 }
                 $event->return = $pageimages;
             }
 
+        }
+        elseif($field->type == "FieldtypeTable") {
+            //coming soon
         }
         elseif($field->type == "FieldtypeMapMarker") {
             $map = new stdClass();
@@ -327,7 +371,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             $f->addOption('long', 'Long');
             $f->addOption('verylong', 'Very Long');
             $auto_content_length_paragraphs = $this->fields->get($event->object->name)->auto_content_length_paragraphs;
-            $f->value = $auto_content_length_paragraphs ? $auto_content_length_paragraphs : 'medium';
+            $f->value = $auto_content_length_paragraphs ? $auto_content_length_paragraphs : 'long';
             $fieldset->append($f);
 
             //html options if RTE textarea fields - CKEditor, TinyMCE etc
@@ -397,6 +441,26 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                 $f->attr('checked', $this->fields->get($event->object->name)->auto_content_add_code == '1' ? 'checked' : '');
                 $fieldset->append($f);
 
+                $f = $this->modules->get('InputfieldCheckbox');
+                $f->label = __('Add Images');
+                $f->description = __('Include embedded images throughout the text.');
+                $f->columnWidth = 50;
+                $f->attr('name', 'auto_content_add_images');
+                $f->attr('checked', $this->fields->get($event->object->name)->auto_content_add_images == '1' ? 'checked' : '');
+                $fieldset->append($f);
+
+                $f = $this->modules->get('InputfieldCheckboxes');
+                $f->label = __('Image Positions');
+                $f->showIf = "auto_content_add_images=1";
+                $f->description = __('Positions images can be added throughout the text.');
+                $f->columnWidth = 50;
+                $f->attr('name', 'auto_content_image_positions');
+                $f->addOption('left','Align Left');
+                $f->addOption('right','Align Right');
+                $f->addOption('fullWidth','Full Width');
+                $f->value = $this->fields->get($event->object->name)->auto_content_image_positions;
+                $fieldset->append($f);
+
             }
         }
         elseif($field->type instanceof FieldtypeImage){
@@ -432,7 +496,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
 
                 $f = wire('modules')->get('InputfieldInteger');
                 $f->label = __('Max number of images');
-                $f->description = __('The maximum number of images to generate.');
+                $f->description = __('The maximum number of images to generate. Too many will result in a slow first load of each page. Images are stored locally so subsequent loads will be fast.');
                 $f->notes = __('If empty, the default of 3 will be used.');
                 $f->columnWidth = 50;
                 $f->attr('name', 'max_num_of_images');
