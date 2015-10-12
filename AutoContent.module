@@ -21,7 +21,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'title' => 'Auto Content',
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
-            'version' => 25,
+            'version' => 26,
             'autoload' => true,
             'icon' => 'lightbulb-o'
         );
@@ -233,7 +233,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                 if($field->auto_content_add_images) {
                     //see if image field is available for this page's template
                     foreach($page->fields as $f) {
-                        if($f->type instanceof FieldtypeImage) {
+                        if($f->type instanceof FieldtypeImage && $f->maxFiles != 1) {
                             $imageField = $f;
                             break;
                         }
@@ -259,7 +259,16 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                                 $imageClass = '';
                                 $imageWidth = 'width="100%"';
                             }
-                            if(strlen($paragraph) > 100) $finalHtml .= '<p><img ' . $imageWidth . ' '.$imageClass.' src="'.$page->filesManager()->url().'autocontent_'.mt_rand(1, $imageField->max_num_of_images-1).'.jpg" /></p>' . $paragraph . '<p style="clear:both">';
+                            if(strlen($paragraph) > 100) {
+                                $i = mt_rand(1, $imageField->max_num_of_images-1);
+                                $imageFileName = 'autocontent_'.$i.'.jpg';
+                                $imagePath = $page->filesManager()->path().$imageFileName;
+                                $imageUrl = $page->filesManager()->url().$imageFileName;
+                                if(!file_exists($imagePath)) {
+                                    $imageUrl = $page->filesManager()->url().$this->generateImage($page, $imageField, $i);
+                                }
+                                $finalHtml .= '<p><img ' . $imageWidth . ' '.$imageClass.' src="'.$imageUrl.'" /></p>' . $paragraph . '<p style="clear:both">';
+                            }
                         }
                         $page->of(true);
                     }
@@ -276,29 +285,18 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             $height = $field->minHeight ? $field->minHeight : ($field->maxHeight ? $field->maxHeight : 500);
 
             if($field->maxFiles == 1) {
+                $this->generateImage($page, $field, 0);
+                $imagePath = $page->filesManager()->path().$this->generateImage($page, $field, 0);
                 $pageimages = $this->getBlankValue($page, $field);
-                if(!file_exists($page->filesManager()->path().'autocontent_0.jpg')) {
-                    $isNew = true;
-                    $imagePath = $faker->image($page->filesManager()->path(), $width, $height, $field->auto_image_content_type);
-                }
-                else {
-                    $isNew = false;
-                    $imagePath = $page->filesManager()->path().'autocontent_0.jpg';
-                }
                 $fakerImage = new Pageimage($pageimages, $imagePath);
-                if($isNew) $fakerImage->rename('autocontent_0.jpg');
                 $event->return = $fakerImage;
             }
             else {
-                $fakerImages = new Pageimages($page);
                 $pageimages = $this->getBlankValue($page, $field);
                 // first create the max number of images allowed
                 $maxNumImages = $field->max_num_of_images ? $field->max_num_of_images : 3;
                 for($i=0;$i<$maxNumImages;$i++) {
-                    if(!file_exists($page->filesManager()->path().'autocontent_'.$i.'.jpg')) {
-                        $imagePath = $faker->image($page->filesManager()->path(), $width, $height, $field->auto_image_content_type);
-                        rename($imagePath, $page->filesManager()->path().'autocontent_'.$i.'.jpg');
-                    }
+                    $this->generateImage($page, $field, $i);
                 }
                 // now select a random number and set up this many pageimages
                 $randNumImages = mt_rand($field->min_num_of_images ? $field->min_num_of_images : 1, $field->max_num_of_images ? $field->max_num_of_images : 3);
@@ -705,6 +703,27 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
     /**
     * Helper functions
     */
+
+    protected function generateImage ($page, $field, $i) {
+
+        require_once $this->config->paths->siteModules.'/AutoContent/vendor/autoload.php';
+
+        // use the factory to create a Faker\Generator instance
+        $faker = $this->data['locale'] ? Faker\Factory::create($this->data['locale']) : Faker\Factory::create();
+
+        $width = $field->minWidth ? $field->minWidth : ($field->maxWidth ? $field->maxWidth : 1000);
+        $height = $field->minHeight ? $field->minHeight : ($field->maxHeight ? $field->maxHeight : 500);
+
+        $imageFilename = 'autocontent_'.$i.'.jpg';
+        $imagePath = $page->filesManager()->path().$imageFilename;
+
+        if(!file_exists($imagePath)) {
+            $fakerImagePath = $faker->image($page->filesManager()->path(), $width, $height, $field->auto_image_content_type);
+            rename($fakerImagePath, $imagePath);
+        }
+
+        return $imageFilename;
+    }
 
     protected function toLowerCamelCase ($text) {
         return lcfirst(str_replace(' ', '', ucwords(str_replace('_', ' ', $text))));
