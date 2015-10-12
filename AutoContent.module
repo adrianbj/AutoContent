@@ -21,7 +21,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'title' => 'Auto Content',
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
-            'version' => 26,
+            'version' => 27,
             'autoload' => true,
             'icon' => 'lightbulb-o'
         );
@@ -261,12 +261,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                             }
                             if(strlen($paragraph) > 100) {
                                 $i = mt_rand(1, $imageField->max_num_of_images-1);
-                                $imageFileName = 'autocontent_'.$i.'.jpg';
-                                $imagePath = $page->filesManager()->path().$imageFileName;
-                                $imageUrl = $page->filesManager()->url().$imageFileName;
-                                if(!file_exists($imagePath)) {
-                                    $imageUrl = $page->filesManager()->url().$this->generateImage($page, $imageField, $i);
-                                }
+                                $imageUrl = $page->filesManager()->url().$this->generateImage($page, $imageField, $i);
                                 $finalHtml .= '<p><img ' . $imageWidth . ' '.$imageClass.' src="'.$imageUrl.'" /></p>' . $paragraph . '<p style="clear:both">';
                             }
                         }
