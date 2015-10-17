@@ -21,7 +21,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'title' => 'Auto Content',
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
-            'version' => 29,
+            'version' => 30,
             'autoload' => true,
             'icon' => 'lightbulb-o'
         );
@@ -266,7 +266,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                             if(strlen($paragraph) > 100) {
                                 $i = array_rand($imageArray);
                                 unset($imageArray[$i]);
-                                $imageUrl = wire('config')->urls->assets.'autocontent/'.$imageField->name.'/'.$this->generateImage($page, $imageField, $i);
+                                $imageUrl = wire('config')->urls->assets.'autocontent/'.$this->generateImage($page, $imageField, $i);
                                 $finalHtml .= '<p><img ' . $imageWidth . ' '.$imageClass.' src="'.$imageUrl.'" /></p>' . $paragraph . '<p style="clear:both">';
                             }
                         }
@@ -286,9 +286,9 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
 
             if($field->maxFiles == 1) {
                 $this->generateImage($page, $field, 0);
-                $imagePath = $page->filesManager()->path().'autocontent_0.jpg';
+                $imagePath = $page->filesManager()->path().'autocontent_'.$field->name.'_0.jpg';
                 if(!file_exists($imagePath)) {
-                    $imagePath = wire('config')->paths->assets.'autocontent/'.$field->name.'/autocontent_0.jpg';
+                    $imagePath = wire('config')->paths->assets.'autocontent/autocontent_'.$field->name.'_0.jpg';
                 }
                 $pageimages = $this->getBlankValue($page, $field);
                 $fakerImage = new Pageimage($pageimages, $imagePath);
@@ -304,9 +304,9 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                 // now select a random number and set up this many pageimages
                 $randNumImages = mt_rand($field->min_num_of_images ? $field->min_num_of_images : 1, $field->max_num_of_images ? $field->max_num_of_images : 3);
                 for($i=0;$i<$randNumImages;$i++) {
-                    $imagePath = $page->filesManager()->path().'autocontent_'.$i.'.jpg';
+                    $imagePath = $page->filesManager()->path().'autocontent_'.$field->name.'_'.$i.'.jpg';
                     if(!file_exists($imagePath)) {
-                        $imagePath = wire('config')->paths->assets.'autocontent/'.$field->name.'/autocontent_'.$i.'.jpg';
+                        $imagePath = wire('config')->paths->assets.'autocontent/autocontent_'.$field->name.'_'.$i.'.jpg';
                     }
                     $fakerImage = new Pageimage($pageimages, $imagePath);
                     $pageimages->add($fakerImage);
@@ -716,10 +716,6 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             wireMkdir(wire('config')->paths->assets.'autocontent/');
         }
 
-        if(!file_exists(wire('config')->paths->assets.'autocontent/'.$field->name.'/')){
-            wireMkdir(wire('config')->paths->assets.'autocontent/'.$field->name.'/');
-        }
-
         require_once $this->config->paths->siteModules.'/AutoContent/vendor/autoload.php';
 
         // use the factory to create a Faker\Generator instance
@@ -728,11 +724,11 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
         $width = $field->minWidth ? $field->minWidth : ($field->maxWidth ? $field->maxWidth : 1000);
         $height = $field->minHeight ? $field->minHeight : ($field->maxHeight ? $field->maxHeight : 500);
 
-        $imageFilename = 'autocontent_'.$i.'.jpg';
-        $imagePath = wire('config')->paths->assets.'autocontent/'.$field->name.'/'.$imageFilename;
+        $imageFilename = 'autocontent_'.$field->name.'_'.$i.'.jpg';
+        $imagePath = wire('config')->paths->assets.'autocontent/'.$imageFilename;
 
         if(!file_exists($page->filesManager->path().$imageFilename) && !file_exists($imagePath)) {
-            $fakerImagePath = $faker->image(wire('config')->paths->assets.'autocontent/'.$field->name.'/', $width, $height, $field->auto_image_content_type);
+            $fakerImagePath = $faker->image(wire('config')->paths->assets.'autocontent/', $width, $height, $field->auto_image_content_type);
             rename($fakerImagePath, $imagePath);
         }
 
@@ -781,7 +777,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
         // delete any temporary faker images
         ini_set('max_execution_time', 60*5); // 5 minutes, increase as needed
 
-        // main image source folders assets/autocontent/field->name
+        // main image source folders assets/autocontent/
         $this->recursiveDelete(wire('config')->paths->assets.'autocontent/', true);
 
         // "autocontent_n.jpg" images from each of the assets/files/page_id folders
@@ -790,7 +786,6 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
         foreach($dir as $file) {
             if($file->isDot() || !$file->isDir()) continue;
             $id = $file->getFilename();
-            wire('log')->save('testing', $id);
             if(!ctype_digit("$id")) continue;
             $page = wire('pages')->get((int) $id);
             if(!$page->id) {
