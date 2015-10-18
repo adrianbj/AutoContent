@@ -42,8 +42,9 @@ There are multiple options for determing the content of the generated lorem ipsu
 * bq - Add blockquotes.
 * code - Add code samples.
 * headers - Add headers.
+* images & image positions/alignment
 
-If the textarea inputfield type is not an RTE, then only the first two are available and output with be plain text.
+If the textarea inputfield type is not an RTE, then only the first two are available and output will be plain text.
 
 ##### Text
 Generated content comes from the include Faker (https://github.com/fzaninotto/Faker) library.

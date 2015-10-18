@@ -21,8 +21,8 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'title' => 'Auto Content',
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
-            'version' => 30,
-            'autoload' => true,
+            'version' => 31,
+            'autoload' => "template!=admin",
             'icon' => 'lightbulb-o'
         );
     }
