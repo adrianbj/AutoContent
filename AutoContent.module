@@ -22,7 +22,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
             'version' => 31,
-            'autoload' => "template!=admin",
+            'autoload' => true,
             'icon' => 'lightbulb-o'
         );
     }
@@ -32,6 +32,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
      *
      */
     protected $data = array();
+    protected $faker;
 
 
    /**
@@ -52,6 +53,13 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
        foreach(self::getDefaultData() as $key => $value) {
                $this->$key = $value;
        }
+
+        // require the Faker autoloader
+        require_once $this->config->paths->siteModules.'/AutoContent/vendor/autoload.php';
+
+        // use the factory to create a Faker\Generator instance
+        $this->faker = $this->data['locale'] ? Faker\Factory::create($this->data['locale']) : Faker\Factory::create();
+
     }
 
     public function init() {
@@ -62,28 +70,27 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
 
 
     public function autoContent($event) {
-        $page = $event->arguments(0);
-        if($page->template == 'admin') return;
-        $field = $event->arguments(1);
+        $p = $event->arguments(0);
+        if($p->template == "admin") return;
+        $field = $event->arguments("field");
+        $value = $event->arguments("value");
 
         //if not empty then display available real content
         if(!is_object($event->return) && $event->return != '') return;
         if(is_object($event->return) && count($event->return) > 0) return;
-
-
-        // require the Faker autoloader
-        require_once $this->config->paths->siteModules.'/AutoContent/vendor/autoload.php';
-
-        // use the factory to create a Faker\Generator instance
-        $faker = $this->data['locale'] ? Faker\Factory::create($this->data['locale']) : Faker\Factory::create();
-
         //if MapMarker set to default then exit
         if(isset($event->return->lat) && $event->return->lat != '0.000000') return;
+
+        $event->return = $this->generateContent($p, $field, $value);
+    }
+
+
+    protected function generateContent($p, $field, $value, $noImages = false) {
 
         if($field->type instanceof FieldtypeText && $field->type != "FieldtypeURL" && $field->type != "FieldtypeDatetime" && $field->type != "FieldtypeTextarea") {
             //see if faker property has been set on the Input tab of the field settings
             if($field->faker_property) {
-                $event->return = $faker->{$field->faker_property};
+                return $this->faker->{$field->faker_property};
             }
             else {
                 //see if faker has a property matched to the name of the text field
@@ -91,23 +98,23 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                     //convert field name which is likely in snakecase to lowerCamelCase which faker properties use
                     //eg. last_name is converted to lastName
                     $faker_property = $this->toLowerCamelCase($field->name);
-                    $event->return = $faker->$faker_property;
+                    return $this->faker->$faker_property;
                 }
                 catch (Exception $e) {
-                    $event->return = "This is an example {$field->label}";
+                    return "This is an example {$field->label}";
                 }
             }
         }
         elseif($field->type == "FieldtypePage") {
             $error = false;
             //if no pages selected, create them via faker
-            if(count($event->return) == 0) {
+            if(count($value) == 0) {
                 //see if faker property has been set on the Input tab of the field settings
                 if($field->faker_property) {
                     //see if faker has a property matched to the name of the text field
                     try {
                         $faker_property = $field->faker_property;
-                        $test = $faker->$faker_property;
+                        $test = $this->faker->$faker_property;
                     }
                     catch (Exception $e) {
                         $error = true;
@@ -119,16 +126,16 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                         //convert field name which is likely in snakecase to lowerCamelCase which faker properties use
                         //eg. last_name is converted to lastName
                         $faker_property = $this->toLowerCamelCase($field->name);
-                        $test = $faker->$faker_property;
+                        $test = $this->faker->$faker_property;
                     }
                     catch (Exception $e) {
                         $error = true;
                     }
                 }
                 $fakedPages = new PageArray();
-                $numPages = $field->derefAsPage == 0 ? mt_rand(2,10) : 1;
-                $inputfield = $field->getInputfield($page);
-                $selectablePages = $inputfield->getSelectablePages($page);
+                $numPages = $field->derefAsPage == 0 ? mt_rand(2,5) : 1;
+                $inputfield = $field->getInputfield($p);
+                $selectablePages = $inputfield->getSelectablePages($p);
                 $availableTemplates = new wireArray();
                 foreach($selectablePages as $sp) {
                     if($sp->template != "admin") $availableTemplates->add($sp->template);
@@ -154,22 +161,25 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                     $np = new Page();
                     $np->template = $masterTemplate;
                     if($error) {
-                        $np->title = str_replace('.','',$faker->sentence(mt_rand(1,3)));
+                        $np->title = str_replace('.','',$this->faker->sentence(mt_rand(1,3)));
                         foreach($masterTemplate->fields as $f) {
-                            if($f->type instanceof FieldtypeText) $np->{$f->name} = str_replace('.','',$faker->sentence(mt_rand(1,3)));
+                            echo $f->name;
+                            //if($f->type instanceof FieldtypeText) $np->{$f->name} = str_replace('.','',$this->faker->sentence(mt_rand(1,3)));
+                            if(!$f->type instanceof FieldtypeImage) $np->{$f->name} = $this->generateContent($p, $f, '', true);
                         }
                     }
                     else {
-                        $np->title = $faker->$faker_property;
+                        $np->title = $this->faker->$faker_property;
                         foreach($masterTemplate->fields as $f) {
-                            if($f->type instanceof FieldtypeText) $np->{$f->name} = $faker->$faker_property;
+                            //if($f->type instanceof FieldtypeText) $np->{$f->name} = $this->faker->$faker_property;
+                            if(!$f->type instanceof FieldtypeImage) $np->{$f->name} = $this->generateContent($p, $f, '', true);
                         }
                     }
                     $np->name = $this->sanitizer->pageName($np->title, true);
 
                     $fakedPages->add($np);
                 }
-                $event->return = $fakedPages;
+                return $fakedPages;
 
             }
         }
@@ -177,10 +187,10 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             //see if faker property has been set on the Input tab of the field settings
             if($field->faker_property) {
                 if($field->faker_property == "dateTimeBetween") {
-                    $fakedDate = $faker->{$field->faker_property}(date("Y-m-d g:i:s", $field->min_datetime), $field->max_datetime);
+                    $fakedDate = $this->faker->{$field->faker_property}(date("Y-m-d g:i:s", $field->min_datetime), $field->max_datetime);
                 }
                 else {
-                    $fakedDate = $faker->{$field->faker_property}($field->max_datetime);
+                    $fakedDate = $this->faker->{$field->faker_property}($field->max_datetime);
                 }
             }
             else {
@@ -189,33 +199,34 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                     //convert field name which is likely in snakecase to lowerCamelCase which faker properties use
                     //eg. date_time is converted to dateTime
                     $faker_property = $this->toLowerCamelCase($field->name);
-                    $fakedDate = $faker->$faker_property($field->max_datetime);
+                    $fakedDate = $this->faker->$faker_property($field->max_datetime);
                 }
                 catch (Exception $e) {
-                    $fakedDate = $faker->dateTime($field->max_datetime);
+                    $fakedDate = $this->faker->dateTime($field->max_datetime);
                 }
             }
+
             (array) $fakedDate;
             $datetime = is_object($fakedDate) ? $fakedDate->date : $fakedDate;
-            $event->return = $field->dateOutputFormat ? date($field->dateOutputFormat, (is_numeric($datetime) ? $datetime : strtotime($datetime))) : $datetime;
+            return $field->dateOutputFormat ? date($field->dateOutputFormat, (is_numeric($datetime) ? $datetime : strtotime($datetime))) : $datetime;
         }
         elseif($field->type == "FieldtypeInteger") {
-            $event->return = mt_rand($field->min ? $field->min : 0, $field->max ? $field->max : getrandmax());
+            return mt_rand($field->min ? $field->min : 0, $field->max ? $field->max : getrandmax());
         }
         elseif($field->type == "FieldtypeFloat") {
             $scale = pow(10, $field->precision);
-            $event->return = mt_rand(($field->min ? $field->min : 0) * $scale, ($field->max ? $field->max : getrandmax()) * $scale) / $scale;
+            return mt_rand(($field->min ? $field->min : 0) * $scale, ($field->max ? $field->max : getrandmax()) * $scale) / $scale;
         }
         elseif($field->type == "FieldtypeEmail") {
-            $event->return = $field->faker_property ? $field->faker_property : $faker->email;
+            return $field->faker_property ? $field->faker_property : $this->faker->email;
         }
         elseif($field->type == "FieldtypeURL") {
-            $event->return = $field->faker_property ? $field->faker_property : $faker->url;
+            return $field->faker_property ? $field->faker_property : $this->faker->url;
         }
         elseif($field->type == "FieldtypeTextarea") {
             //Plain text
             if($field->inputfieldClass == 'InputfieldTextarea') {
-                $event->return = file_get_contents("http://loripsum.net/api/{$field->auto_content_number_paragraphs}/{$field->auto_content_length_paragraphs}/plaintext");
+                return file_get_contents("http://loripsum.net/api/{$field->auto_content_number_paragraphs}/{$field->auto_content_length_paragraphs}/plaintext");
             }
             //RTEs
             else {
@@ -230,9 +241,9 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                                     ($field->auto_content_add_links ? '/link' : '')
                                 );
 
-                if($field->auto_content_add_images) {
+                if($field->auto_content_add_images && !$noImages) {
                     //see if image field is available for this page's template
-                    foreach($page->fields as $f) {
+                    foreach($p->fields as $f) {
                         if($f->type instanceof FieldtypeImage && $f->maxFiles != 1) {
                             $imageField = $f;
                             break;
@@ -243,7 +254,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                         $text = str_replace('</p>', '', $loremIpsum);
                         $paragraphs = explode('<p>', $text);
 
-                        $page->of(false);
+                        $p->of(false);
                         $finalHtml = '';
                         $imageArray = array();
                         for($i=0;$i<$imageField->max_num_of_images;$i++) {
@@ -266,18 +277,18 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                             if(strlen($paragraph) > 100) {
                                 $i = array_rand($imageArray);
                                 unset($imageArray[$i]);
-                                $imageUrl = wire('config')->urls->assets.'autocontent/'.$this->generateImage($page, $imageField, $i);
+                                $imageUrl = wire('config')->urls->assets.'autocontent/'.$this->generateImage($p, $imageField, $i);
                                 $finalHtml .= '<p><img ' . $imageWidth . ' '.$imageClass.' src="'.$imageUrl.'" /></p>' . $paragraph . '<p style="clear:both">';
                             }
                         }
-                        $page->of(true);
+                        $p->of(true);
                     }
                 }
                 else {
                     $finalHtml = $loremIpsum;
                 }
 
-                $event->return = $finalHtml;
+                return $finalHtml;
             }
         }
         elseif($field->type instanceof FieldtypeImage) {
@@ -285,61 +296,60 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             $height = $field->minHeight ? $field->minHeight : ($field->maxHeight ? $field->maxHeight : 500);
 
             if($field->maxFiles == 1) {
-                $this->generateImage($page, $field, 0);
-                $imagePath = $page->filesManager()->path().'autocontent_'.$field->name.'_0.jpg';
+                $this->generateImage($p, $field, 0);
+                $imagePath = $p->filesManager()->path().'autocontent_'.$field->name.'_0.jpg';
                 if(!file_exists($imagePath)) {
                     $imagePath = wire('config')->paths->assets.'autocontent/autocontent_'.$field->name.'_0.jpg';
                 }
-                $pageimages = $this->getBlankValue($page, $field);
-                $fakerImage = new Pageimage($pageimages, $imagePath);
-                $event->return = $fakerImage;
+                $pageimages = $this->getBlankValue($p, $field);
+                $this->fakerImage = new Pageimage($pageimages, $imagePath);
+                return $this->fakerImage;
             }
             else {
-                $pageimages = $this->getBlankValue($page, $field);
+                $pageimages = $this->getBlankValue($p, $field);
                 // first create the max number of images allowed
                 $maxNumImages = $field->max_num_of_images ? $field->max_num_of_images : 3;
                 for($i=0;$i<$maxNumImages;$i++) {
-                    $this->generateImage($page, $field, $i);
+                    $this->generateImage($p, $field, $i);
                 }
                 // now select a random number and set up this many pageimages
                 $randNumImages = mt_rand($field->min_num_of_images ? $field->min_num_of_images : 1, $field->max_num_of_images ? $field->max_num_of_images : 3);
                 for($i=0;$i<$randNumImages;$i++) {
-                    $imagePath = $page->filesManager()->path().'autocontent_'.$field->name.'_'.$i.'.jpg';
+                    $imagePath = $p->filesManager()->path().'autocontent_'.$field->name.'_'.$i.'.jpg';
                     if(!file_exists($imagePath)) {
                         $imagePath = wire('config')->paths->assets.'autocontent/autocontent_'.$field->name.'_'.$i.'.jpg';
                     }
-                    $fakerImage = new Pageimage($pageimages, $imagePath);
-                    $pageimages->add($fakerImage);
+                    $this->fakerImage = new Pageimage($pageimages, $imagePath);
+                    $pageimages->add($this->fakerImage);
                 }
-                $event->return = $pageimages;
+                return $pageimages;
             }
 
         }
         elseif($field->type == "FieldtypeTable") {
-            //coming soon
+            //not working yet
+            /*$tableEntry = $p->{$field->name}->makeBlankItem();
+            foreach($p->{$field->name}->columns as $f) {
+                $subFieldName = $f['name'];
+                $tableEntry->$subFieldName = $this->generateContent($p, $f, '');
+            }
+            $p->{$field->name}->add($tableEntry);
+            return $table;*/
         }
         elseif($field->type == "FieldtypeMapMarker") {
             $map = new stdClass();
-            $map->address = $faker->address;
-            $map->lat = $faker->latitude;
-            $map->lng = $faker->longitude;
-            $event->return = $map;
+            $map->address = $this->faker->address;
+            $map->lat = $this->faker->latitude;
+            $map->lng = $this->faker->longitude;
+            return $map;
         }
         else {
-            $event->return = "This is an example {$field->label}";
+            return "This is an example {$field->label}";
         }
     }
 
 
-
-
     public function fieldConfig(HookEvent $event) {
-
-        // require the Faker autoloader
-        require_once $this->config->paths->siteModules.'/AutoContent/vendor/autoload.php';
-
-        // use the factory to create a Faker\Generator instance
-        $faker = $this->data['locale'] ? Faker\Factory::create($this->data['locale']) : Faker\Factory::create();
 
         $field = wire('fields')->get($event->object->name);
 
@@ -470,7 +480,6 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
         elseif($field->type instanceof FieldtypeImage){
             $f = $this->modules->get('InputfieldSelect');
             $f->label = __('Image content type');
-            //$f->columnWidth = 50;
             $f->attr('name', 'auto_image_content_type');
             $f->addOption('abstract', 'Abstract');
             $f->addOption('animals', 'Animals');
@@ -530,7 +539,6 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             $fieldset->append($f);
         }
         else {
-
             $f = $this->modules->get('InputfieldText');
             $f->label = __('Faker property');
             $f->description = __('The Faker property you want to use to auto populate content. You can use anything from the list of formatters at: [https://github.com/fzaninotto/Faker#formatters](https://github.com/fzaninotto/Faker#formatters)');
@@ -538,7 +546,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
 
             try {
                 $faker_property = $this->toLowerCamelCase($field->name);
-                $faker->$faker_property;
+                $this->faker->$faker_property;
                 $f->notes = __("This field has been automatically matched to the \"$faker_property\" Faker property so you can leave it empty.");
             }
             catch (Exception $e) {
@@ -586,7 +594,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
     }
 
 
-    public function createOrDeletePages(HookEvent $event) {
+    protected function createOrDeletePages(HookEvent $event) {
 
         if($this->input->post->settingsSaved == 1) {
 
@@ -598,17 +606,11 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
 
             //add new generated pages
             if($this->input->post->number_of_pages) {
-                // require the Faker autoloader
-                require_once $this->config->paths->siteModules.'/AutoContent/vendor/autoload.php';
-
-                // use the factory to create a Faker\Generator instance
-                $faker = $this->data['locale'] ? Faker\Factory::create($this->data['locale']) : Faker\Factory::create();
-
                 for($i=0;$i<$this->input->post->number_of_pages;$i++) {
                     $np = new Page();
                     $np->parent = $this->input->post->parent_page;
                     $np->template = $this->input->post->page_template;
-                    $np->title = $this->input->post->faker_property ? $faker->{$this->input->post->faker_property} : str_replace('.','',$faker->sentence(mt_rand(1,3)));
+                    $np->title = $this->input->post->faker_property ? $this->faker->{$this->input->post->faker_property} : str_replace('.','',$this->faker->sentence(mt_rand(1,3)));
                     $np->addStatus(Page::statusLocked);
                     $np->save();
                     $this->data['generatedPages'][] = $np->id;
@@ -710,16 +712,11 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
     * Helper functions
     */
 
-    protected function generateImage ($page, $field, $i) {
+    protected function generateImage ($p, $field, $i) {
 
         if(!file_exists(wire('config')->paths->assets.'autocontent/')){
             wireMkdir(wire('config')->paths->assets.'autocontent/');
         }
-
-        require_once $this->config->paths->siteModules.'/AutoContent/vendor/autoload.php';
-
-        // use the factory to create a Faker\Generator instance
-        $faker = $this->data['locale'] ? Faker\Factory::create($this->data['locale']) : Faker\Factory::create();
 
         $width = $field->minWidth ? $field->minWidth : ($field->maxWidth ? $field->maxWidth : 1000);
         $height = $field->minHeight ? $field->minHeight : ($field->maxHeight ? $field->maxHeight : 500);
@@ -727,9 +724,9 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
         $imageFilename = 'autocontent_'.$field->name.'_'.$i.'.jpg';
         $imagePath = wire('config')->paths->assets.'autocontent/'.$imageFilename;
 
-        if(!file_exists($page->filesManager->path().$imageFilename) && !file_exists($imagePath)) {
-            $fakerImagePath = $faker->image(wire('config')->paths->assets.'autocontent/', $width, $height, $field->auto_image_content_type);
-            rename($fakerImagePath, $imagePath);
+        if(!file_exists($p->filesManager->path().$imageFilename) && !file_exists($imagePath)) {
+            $this->fakerImagePath = $this->faker->image(wire('config')->paths->assets.'autocontent/', $width, $height, $field->auto_image_content_type);
+            rename($this->fakerImagePath, $imagePath);
         }
 
         return $imageFilename;
@@ -748,8 +745,8 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
         }
     }
 
-    public function getBlankValue(Page $page, Field $field) {
-        $pageimages = new Pageimages($page);
+    protected function getBlankValue(Page $p, Field $field) {
+        $pageimages = new Pageimages($p);
         $pageimages->setField($field);
         $pageimages->setTrackChanges(true);
         return $pageimages;
@@ -759,7 +756,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
      * Function to recursively delete an entire folder
      *
      */
-    public function recursiveDelete($dirPath, $deleteParent = true){
+    protected function recursiveDelete($dirPath, $deleteParent = true){
         foreach(new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dirPath, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $path) {
             $path->isFile() ? unlink($path->getPathname()) : rmdir($path->getPathname());
         }
@@ -787,21 +784,21 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             if($file->isDot() || !$file->isDir()) continue;
             $id = $file->getFilename();
             if(!ctype_digit("$id")) continue;
-            $page = wire('pages')->get((int) $id);
-            if(!$page->id) {
+            $p = wire('pages')->get((int) $id);
+            if(!$p->id) {
                 continue;
             }
 
             // now find all the files present on the page
             // identify those that are not part of our $valid array
-            $d = new DirectoryIterator($page->filesManager->path());
+            $d = new DirectoryIterator($p->filesManager->path());
             foreach($d as $f) {
                 if($f->isDot() || !$f->isFile()) continue;
                 if (strpos($f,'autocontent_') !== false) {
-                    unlink($page->filesManager->path().$f);
+                    unlink($p->filesManager->path().$f);
                 }
             }
-            wire('pages')->uncache($page); // just in case we need the memory
+            wire('pages')->uncache($p); // just in case we need the memory
 
         }
     }
