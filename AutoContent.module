@@ -21,7 +21,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'title' => 'Auto Content',
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
-            'version' => 31,
+            'version' => 32,
             'autoload' => true,
             'icon' => 'lightbulb-o'
         );
@@ -634,7 +634,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
 
         $data = array_merge(self::getDefaultData(), $data);
 
-        $wrapper = new InputFieldWrapper();
+        $wrapper = new InputfieldWrapper();
 
         $f = wire('modules')->get('InputfieldSelect');
         $f->attr('name+id', 'locale');
