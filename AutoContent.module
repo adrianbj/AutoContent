@@ -21,7 +21,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'title' => 'Auto Content',
             'summary' => 'Automatic generation of content when a field is blank',
             'href' => '',
-            'version' => 32,
+            'version' => 33,
             'autoload' => true,
             'icon' => 'lightbulb-o'
         );
@@ -775,7 +775,9 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
         ini_set('max_execution_time', 60*5); // 5 minutes, increase as needed
 
         // main image source folders assets/autocontent/
-        $this->recursiveDelete(wire('config')->paths->assets.'autocontent/', true);
+        if (file_exists(wire('config')->paths->assets.'autocontent/')) {
+            $this->recursiveDelete(wire('config')->paths->assets.'autocontent/', true);
+        }
 
         // "autocontent_n.jpg" images from each of the assets/files/page_id folders
         $dir = new DirectoryIterator(wire('config')->paths->files);
