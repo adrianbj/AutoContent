@@ -57,6 +57,10 @@ Generated from http://lorempixel.com with options for the image category (People
 ##### Datetime
 Various options from the Faker library, including min and max date to be generated
 
+####Support forum:
+https://processwire.com/talk/topic/11016-autocontent-generator/
+
+
 ### License
 
 This program is free software; you can redistribute it and/or
