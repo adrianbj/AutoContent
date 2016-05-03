@@ -22,7 +22,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
             'summary' => 'Automatic generation of content when a field is blank',
             'author' => 'Adrian Jones',
             'href' => '',
-            'version' => 33,
+            'version' => 34,
             'autoload' => true,
             'icon' => 'lightbulb-o'
         );
@@ -72,16 +72,15 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
 
     public function autoContent($event) {
         $p = $event->arguments(0);
-        if($p->template == "admin") return;
+        //if($p->id != $this->page->id) return;
+        if($p->template == "admin" || $p->parent->id == $this->config->adminRootPageID || $p->parent->id == $this->config->trashPageID) return;
         $field = $event->arguments("field");
         $value = $event->arguments("value");
-
         //if not empty then display available real content
         if(!is_object($event->return) && $event->return != '') return;
         if(is_object($event->return) && count($event->return) > 0) return;
         //if MapMarker set to default then exit
         if(isset($event->return->lat) && $event->return->lat != '0.000000') return;
-
         $event->return = $this->generateContent($p, $field, $value);
     }
 
@@ -258,7 +257,8 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                         $p->of(false);
                         $finalHtml = '';
                         $imageArray = array();
-                        for($i=0;$i<$imageField->max_num_of_images;$i++) {
+                        $maxNumImages = $imageField->max_num_of_images ? $imageField->max_num_of_images : 3;
+                        for($i=0;$i<$maxNumImages;$i++) {
                             $imageArray[] = $i;
                         }
                         foreach($paragraphs as $paragraph) {
@@ -314,7 +314,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
                     $this->generateImage($p, $field, $i);
                 }
                 // now select a random number and set up this many pageimages
-                $randNumImages = mt_rand($field->min_num_of_images ? $field->min_num_of_images : 1, $field->max_num_of_images ? $field->max_num_of_images : 3);
+                $randNumImages = mt_rand($field->min_num_of_images ? $field->min_num_of_images : 1, $maxNumImages);
                 for($i=0;$i<$randNumImages;$i++) {
                     $imagePath = $p->filesManager()->path().'autocontent_'.$field->name.'_'.$i.'.jpg';
                     if(!file_exists($imagePath)) {
@@ -640,7 +640,7 @@ class AutoContent extends WireData implements Module, ConfigurableModule {
         $f = wire('modules')->get('InputfieldSelect');
         $f->attr('name+id', 'locale');
         $f->label = __('Locale');
-        $f->description = __("The selected roles will not be subject to any of the rules below.\nThe name will change automatically with the title, but they will be able to manually edit the page name as desired.");
+        $f->description = __("This will determine the language and formatting of various generated content.");
         // populate with all available options from Faker Provider directory
         $path = wire('config')->paths->siteModules.'/AutoContent/vendor/fzaninotto/faker/src/Faker/Provider';
         foreach (new DirectoryIterator($path) as $file) {
